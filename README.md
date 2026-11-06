@@ -98,7 +98,7 @@
 | --- | --- | --- |
 | Node.js | ≥ 20 | 运行 Next.js |
 | JDK | 21 | 运行 Spring Boot（项目自带 Maven Wrapper，无需单独装 Maven） |
-| Docker | 任意较新版本 | 一条命令拉起 MySQL 与 Redis（也可用本机安装的实例） |
+| Docker | 任意较新版本 | **只用于跑 MySQL 和 Redis**（也可用本机安装的实例）；后端本身不是容器，直接 `java -jar` |
 
 ### 1. 启动中间件
 
@@ -107,6 +107,8 @@ docker compose up -d
 ```
 
 会在宿主机映射 `3307`（MySQL）和 `6380`（Redis）——故意避开常见的 `3306` / `6379`，避免与本机已有服务冲突。数据落在 Docker volume 中，重启不丢。
+
+> Docker 在这里只负责中间件。如果本机已经装了 MySQL 8 / Redis 7，跳过这一步，把 `application.yml` 里的端口改成 `3306` / `6379`（或用 `SPRING_DATASOURCE_URL`、`SPRING_DATA_REDIS_PORT` 覆盖）即可，后端代码不需要改。
 
 ### 2. 启动后端
 

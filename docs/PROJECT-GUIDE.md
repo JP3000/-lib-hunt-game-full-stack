@@ -242,6 +242,7 @@ npm run dev                               # 前端 3000
 | 怎么保证测试可信？ | Testcontainers 真实 MySQL/Redis；并发测试不加 @Transactional | INTERVIEW 8 |
 | 压测数据怎么来的？ | JMeter 120 线程 + ab 对照；JVM 预热后测 | INTERVIEW 9 |
 | 为什么浏览器只调 Next.js？ | 同源、无跨域、鉴权与错误格式只处理一层 | INTERVIEW 10 |
+| 项目里为什么用 Docker？ | 只用来跑 MySQL/Redis 和测试容器；后端是 `java -jar`，版本固定且不污染本机 | README 快速开始 |
 | 这个项目最难的地方？ | 并发下"只结算一次"：四层机制各管一段，缺一个就会在重试或压测时暴露 | INTERVIEW 通用 |
 | 有什么没做好？ | 熔断、JWT 踢下线、二维码 HMAC、单机压测 | README 已知限制 |
 

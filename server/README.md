@@ -21,7 +21,7 @@
 ## 本地启动
 
 ```bash
-# 1. 在仓库根目录启动 MySQL + Redis
+# 1. 在仓库根目录启动 MySQL + Redis（Docker 只跑中间件；后端本身直接 java -jar）
 docker compose up -d
 
 # 2. 启动后端
