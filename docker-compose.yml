@@ -1,0 +1,47 @@
+# 本地开发中间件：MySQL 8 + Redis 7
+#
+# 注意：
+#   - Redis 映射到宿主机 6380，避免与本机已有的 6379 冲突。
+#     如果你本机没有跑 Redis，也可以把 "6380:6379" 改成 "6379:6379"，
+#     并同步修改 server/src/main/resources/application.yml 中的 spring.data.redis.port。
+#   - 这里的账号密码仅用于本地开发，生产环境请通过环境变量注入。
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: libhunt-mysql
+    ports:
+      # 宿主机 3306 被其他进程占用，改用 3307；application.yml 中同步配置
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: libhunt
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: libhunt-redis
+    ports:
+      - "6380:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  mysql-data:
+  redis-data:

@@ -1,0 +1,67 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: lib-hunt-server
+
+  datasource:
+    # docker-compose 中 MySQL 映射到 3307（宿主机 3306 被占用）
+    url: "jdbc:mysql://localhost:3307/libhunt?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+
+  data:
+    redis:
+      host: localhost
+      # docker-compose 中 Redis 映射到 6380，避免与宿主机已有的 6379 冲突
+      port: 6380
+      database: 0
+      timeout: 3s
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 开发期打印 SQL；生产环境请改为 NoLoggingImpl
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+libhunt:
+  jwt:
+    # 生产环境必须通过环境变量 JWT_SECRET 覆盖，且长度 >= 32 字节
+    secret: ${JWT_SECRET:dev-only-change-me-please-32-bytes-minimum}
+    expire-hours: 12
+  admin:
+    # 首次启动会自动创建管理员；生产环境用环境变量覆盖初始密码
+    student-no: ${ADMIN_STUDENT_NO:admin}
+    initial-password: ${ADMIN_INITIAL_PASSWORD:Admin@123456}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.libhunt: debug
