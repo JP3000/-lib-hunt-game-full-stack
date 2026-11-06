@@ -34,9 +34,25 @@ public class LevelService {
     private final LevelOptionMapper levelOptionMapper;
     private final LevelItemMapper levelItemMapper;
     private final ItemMapper itemMapper;
+    private final LevelCache levelCache;
 
     public List<LevelSummaryVO> list(String locale) {
         String loc = LocaleSupport.normalize(locale);
+        return levelCache.list("libhunt:level:list:" + loc, () -> loadList(loc));
+    }
+
+    public LevelDetailVO detail(int levelNo, String locale) {
+        String loc = LocaleSupport.normalize(locale);
+        LevelDetailVO detail = levelCache.detail(
+                "libhunt:level:detail:" + loc + ":" + levelNo,
+                () -> loadDetail(levelNo, loc));
+        if (detail == null) {
+            throw new BusinessException("关卡不存在：" + levelNo);
+        }
+        return detail;
+    }
+
+    private List<LevelSummaryVO> loadList(String loc) {
         List<Level> levels = levelMapper.selectList(
                 new LambdaQueryWrapper<Level>()
                         .eq(Level::getStatus, STATUS_ENABLED)
@@ -75,16 +91,17 @@ public class LevelService {
                 .toList();
     }
 
-    public LevelDetailVO detail(int levelNo, String locale) {
-        String loc = LocaleSupport.normalize(locale);
-
+    /**
+     * 只查库、不抛异常：返回 null 表示关卡不存在，由 {@link LevelCache} 把它缓存成空值。
+     */
+    private LevelDetailVO loadDetail(int levelNo, String loc) {
         Level level = levelMapper.selectOne(
                 new LambdaQueryWrapper<Level>()
                         .eq(Level::getLevelNo, levelNo)
                         .eq(Level::getStatus, STATUS_ENABLED)
                         .last("LIMIT 1"));
         if (level == null) {
-            throw new BusinessException("关卡不存在：" + levelNo);
+            return null;
         }
 
         List<LevelOption> optionRows = levelOptionMapper.selectList(
