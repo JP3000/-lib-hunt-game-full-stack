@@ -233,7 +233,7 @@ player ──< game_run ──< level_attempt
 完整数据与复现命令见 [perf/RESULTS.md](perf/RESULTS.md)。环境：Apple M3 / 16 GB，单实例 Spring Boot，MySQL + Redis 在 Docker。
 
 - 同一接口开/关缓存（`--libhunt.cache.enabled=false` 作为干净对照，各 3 轮取中位数）：
-  11,507 → 3,027 req/s，P95 7 → 42 ms，约 3.8 倍
+  11,507 → 3,027 req/s，P95 7 → 43 ms，约 3.8 倍
 - JMeter 120 线程混合压测：62,000 次请求、7.1 秒、0 错误、整体 8,712 req/s
 - 压测期间 Redis `keyspace_misses` 增量 0，MySQL `Com_select` +22,001（来自排行榜补昵称 1.8 万 + 判题约 3 千，关卡详情一次都没回源）
 - 判题接口 20 线程抢同一批对局：P95 26 ms、0 错误，行锁没有把连接池拖垮

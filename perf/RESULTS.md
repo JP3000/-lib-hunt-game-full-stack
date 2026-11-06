@@ -20,7 +20,7 @@
 | 模式 | 吞吐（req/s） | P50 | P95 | P99 |
 | --- | ---: | ---: | ---: | ---: |
 | 缓存开启（Redis） | **11,507** | 4 ms | 7 ms | 10 ms |
-| 缓存关闭（每次回源 MySQL，`libhunt.cache.enabled=false`） | **3,027** | 12 ms | 42 ms | 72 ms |
+| 缓存关闭（每次回源 MySQL，`libhunt.cache.enabled=false`） | **3,027** | 12 ms | 43 ms | 71 ms |
 
 **约 3.8 倍吞吐，P95 低 6 倍。** 关缓存不是模拟故障，而是走同一个接口的真实 MySQL 路径，所以这是干净的对照。
 
