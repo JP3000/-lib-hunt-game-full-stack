@@ -325,15 +325,9 @@ JMeter 测试计划与结果在 [perf/](perf/) 目录，完整报告见 [perf/RE
 cd perf && jmeter -n -t libhunt-load-test.jmx -l results/results.jtl -e -o results/html
 ```
 
-## 部署（可选）
+## 关于部署
 
-**这一步不是"全栈"的必要条件**，只是让作品有一个可访问的地址。当前仓库的 [DEPLOY.md](DEPLOY.md) 描述的是旧版纯前端部署，全栈部署（Next.js + Spring Boot + MySQL + Redis + Nginx）尚未完成。
-
-规划中的最小方案：
-
-- 两个进程：Next.js（`npm run build && npm run start`）与 Spring Boot（`java -jar`），用 systemd 或 Docker Compose 托管
-- Nginx：`/` → Next.js，`/api/` → Spring Boot，HTTPS 用 certbot
-- MySQL / Redis 不对公网暴露；`JWT_SECRET`、数据库密码通过环境变量注入
+本项目是作品集项目，**不打算部署到公网**。本地 `docker compose up -d` + 两个进程就是完整系统，面试时直接在本机演示；README 里的启动步骤与环境变量已经足够复现。
 
 ## 开发注意事项
 
@@ -376,7 +370,6 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 - **压测只在单机跑过**：JMeter 数据见 [perf/RESULTS.md](perf/RESULTS.md)，没有多机 / 云环境数据
 - **排行榜读路径仍回源 MySQL**：Redis 只负责排序，昵称与分数要批量补查；压测里 9,000 次读取产生 1.8 万次 SELECT，量级不大但可以进一步缓存整张榜
 - **管理端只有基础能力**：账号管理、统计、重建排行榜；没有批量导入（Excel）与可视化图表
-- **部署未完成**：全栈版目前只在本地运行
 
 ## 相关文档
 
@@ -387,7 +380,6 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 | [docs/BEFORE-AFTER.md](docs/BEFORE-AFTER.md) | 纯前端 → 全栈的改造前后对比 |
 | [docs/INTERVIEW.md](docs/INTERVIEW.md) | 每个技术点的 3 分钟讲稿与追问 |
 | [perf/](perf/) | JMeter 方案与压测结果 |
-| [DEPLOY.md](DEPLOY.md) | 旧版纯前端部署（全栈部署待重写） |
 | [AGENTS.md](AGENTS.md) | AI 编程工具使用约定 |
 | [public/docs/](public/docs/) | 游戏剧情与媒体素材制作方案 |
 
