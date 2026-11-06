@@ -37,6 +37,23 @@ cd server
 | `http://localhost:8080/swagger-ui.html` | 接口文档 |
 | `http://localhost:8080/actuator/health` | Spring Boot 健康端点 |
 
+## 测试
+
+```bash
+./mvnw test
+```
+
+测试用 Testcontainers 自动拉起 `mysql:8.4` 与 `redis:7-alpine`，不依赖本机的 docker compose，也不会污染开发库。首次运行需要拉镜像，之后整套约 20 秒。
+
+| 测试类 | 覆盖内容 |
+| --- | --- |
+| `GameRulesTest` | 计分规则 |
+| `GameRunFlowIntegrationTest` | 开局 / 判题 / 扫码 / 结算 / 幂等 / 跳关 / 放弃 / 通关 |
+| `GameRunConcurrencyIntegrationTest` | 并发答题、并发结算、并发开局（验证行锁与唯一索引） |
+| `LeaderboardIntegrationTest` | Redis 排序、每人最好一局、预热与重建 |
+| `LeaderboardFallbackTest` | Redis 故障时回落 MySQL |
+| `ApiSecurityIntegrationTest` | 401 / 403、登录、禁用账号、答案不泄露 |
+
 ## 端口说明
 
 | 服务 | 宿主机端口 | 说明 |
@@ -72,6 +89,9 @@ src/main/java/com/libhunt/
 src/main/resources/
 ├── application.yml
 └── db/migration/    Flyway 迁移脚本
+src/test/java/com/libhunt/
+├── support/         IntegrationTestBase（Testcontainers + 测试数据工具）
+└── *.java           单元测试 / 集成测试 / 并发测试
 ```
 
 ## 数据库迁移

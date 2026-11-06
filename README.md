@@ -276,8 +276,28 @@ node --experimental-strip-types scripts/export-levels.mjs V5__update_levels.sql
 | `npm run build` / `npm run start` | 生产构建 / 启动 |
 | `npm run lint` | ESLint 检查 |
 | `cd server && ./mvnw spring-boot:run` | 启动后端 |
+| `cd server && ./mvnw test` | 跑后端测试（自动拉起 MySQL / Redis 容器） |
 | `cd server && ./mvnw -DskipTests package` | 打包 jar |
 | `node --experimental-strip-types scripts/export-levels.mjs` | 重新生成关卡种子 SQL |
+
+## 测试
+
+后端有 35 个自动化用例，跑在真实的 MySQL 8.4 + Redis 7 容器上（Testcontainers），不依赖本地已启动的 docker compose：
+
+```bash
+cd server && ./mvnw test
+```
+
+| 测试类 | 覆盖内容 |
+| --- | --- |
+| `GameRulesTest` | 计分规则：首答 100、每错扣 20、最低 20 |
+| `GameRunFlowIntegrationTest` | 开局 / 判题 / 扫码 / 结算 / 重复提交幂等 / 跳关拦截 / 放弃重开 / 12 关通关 |
+| `GameRunConcurrencyIntegrationTest` | 10 个并发请求：只落一条过关记录、只结算一次、只开一局 |
+| `LeaderboardIntegrationTest` | 复合排序、每人取最好一局、Redis 预热与全量重建 |
+| `LeaderboardFallbackTest` | Redis 不可用时回落 MySQL；写排行榜失败不影响通关 |
+| `ApiSecurityIntegrationTest` | 401 / 403 统一 JSON、BCrypt 登录、禁用账号、关卡接口不泄题 |
+
+为什么不用 H2：判题依赖 `SELECT ... FOR UPDATE`，排行榜依赖窗口函数，迁移脚本用到 JSON 列——这些都是 MySQL 特有行为，换成 H2 既测不出真实问题，也测不出并发。
 
 ## 部署（可选）
 
@@ -325,7 +345,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 
 - **关卡内容仍需改代码**：内容源文件是 TS，改完要生成迁移并重启后端；没有关卡 CMS
 - **二维码明文比对**：没做 HMAC 防伪，扫码内容泄露后可以被复制
-- **无自动化测试**：目前靠接口联调与手工走查，自动化测试/压测在计划中
+- **压测数据未产出**：已有 35 个集成/并发测试覆盖正确性，但还没有 JMeter 压测报告
 - **管理端只有基础能力**：账号管理、统计、重建排行榜；没有批量导入（Excel）与可视化图表
 - **部署未完成**：全栈版目前只在本地运行
 

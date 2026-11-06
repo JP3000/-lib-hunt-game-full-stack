@@ -23,7 +23,7 @@
 | 5 前端对接 | ✅ |
 | 6 部署上线 | ⬜ 可选，见阶段说明 |
 | 7 排行榜与统计 | 🚧 Redis 已完成，POI 导出未做 |
-| 8 加固与压测 | ⬜ |
+| 8 加固与压测 | 🚧 自动化测试已完成，缓存/锁/限流/压测未做 |
 | 9 文档与面试预演 | 🚧 README 已重写，面试稿未写 |
 
 > **关于部署**：部署不是"全栈项目"的必要条件——全栈指的是前端、后端、数据存储各司其职，且业务真相在服务端。部署只是让简历上的链接点得开、顺便练习 Nginx / 进程管理，优先级低于阶段 8。
@@ -200,13 +200,32 @@ player ──< game_run ──< level_attempt
 - `ZREMRANGEBYRANK key 0 -(N+1)` 在集合元素不足 N 个时会把**第一名**删掉（负下标被钳制为 0）；
   正确做法是先 `ZCARD` 判断，再删除 rank `0 .. size-N-1`
 
-### 阶段 8 · 加固与压测 ⬜
+### 阶段 8 · 加固与压测 🚧
 
+- [x] 自动化测试：Testcontainers 起真实 MySQL + Redis，35 个用例覆盖判题、幂等、并发、排行榜兜底、RBAC
 - [ ] 缓存三兄弟
 - [ ] Redisson
 - [ ] BitMap 打卡
 - [ ] 限流（可选）
 - [ ] JMeter 数据
+
+**测试验收记录（2026-11-06）**
+
+`cd server && ./mvnw test` → `Tests run: 35, Failures: 0, Errors: 0`，整套约 20 秒（首次需拉镜像）。
+
+| 测试类 | 用例数 | 覆盖 |
+| --- | --- | --- |
+| `GameRulesTest` | 3 | 计分规则 |
+| `GameRunFlowIntegrationTest` | 14 | 开局 / 判题 / 扫码 / 结算 / 幂等 / 跳关 / 放弃 / 通关 |
+| `GameRunConcurrencyIntegrationTest` | 4 | 10 并发答题、并发答题+扫码、并发开局、并发幂等键 |
+| `LeaderboardIntegrationTest` | 4 | Redis 排序、每人最好一局、预热、rebuild |
+| `LeaderboardFallbackTest` | 2 | Redis 故障回落 MySQL、写失败不拖垮通关 |
+| `ApiSecurityIntegrationTest` | 8 | 401/403、登录、禁用账号、答案不泄露 |
+
+**踩坑记录**
+- 不能用 H2 代替 MySQL：`SELECT … FOR UPDATE` 的锁语义、窗口函数、JSON 列都是 MySQL 特有行为
+- 并发用例不能加 `@Transactional`，否则其他线程看不到未提交的数据，锁形同虚设
+- 容器放在静态块里共享，避免每个测试类重启一次容器（否则单类 20 秒、六类两分钟）
 
 ### 阶段 9 · 文档与面试预演 🚧
 
