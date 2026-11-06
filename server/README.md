@@ -53,6 +53,13 @@ cd server
 | `LeaderboardIntegrationTest` | Redis 排序、每人最好一局、预热与重建 |
 | `LeaderboardFallbackTest` | Redis 故障时回落 MySQL |
 | `ApiSecurityIntegrationTest` | 401 / 403、登录、禁用账号、答案不泄露 |
+| `LevelCacheIntegrationTest` | 关卡详情 / 列表缓存、空值标记、按语言分键 |
+| `LevelCacheFallbackTest` | Redis 故障时缓存降级回源 |
+| `LevelCacheDisabledTest` | 缓存开关关闭后只读 MySQL、不写 Redis |
+| `LoginRateLimitIntegrationTest` | IP 限流 429、账号级限流 |
+| `CheckinIntegrationTest` | 打卡幂等、连续天数、BitMap 存储占用 |
+
+共 49 个用例。压测脚本与结果在仓库根目录的 [perf/](../perf/)。
 
 ## 端口说明
 

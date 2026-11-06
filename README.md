@@ -264,6 +264,7 @@ node --experimental-strip-types scripts/export-levels.mjs V5__update_levels.sql
 | `ADMIN_INITIAL_PASSWORD` | `Admin@123456` | 首次启动创建的管理员密码 |
 | `SPRING_DATASOURCE_URL` / `..._USERNAME` / `..._PASSWORD` | `localhost:3307/libhunt`、root/root | Spring Boot 环境变量覆盖 |
 | `SPRING_DATA_REDIS_HOST` / `..._PORT` | `localhost:6380` | 同上 |
+| `LIBHUNT_CACHE_ENABLED` | `true` | 关卡内容缓存总开关；`false` 时每次读都回源 MySQL（排查 / 压测基线用） |
 
 **前端**：
 
@@ -287,7 +288,7 @@ node --experimental-strip-types scripts/export-levels.mjs V5__update_levels.sql
 
 ## 测试
 
-后端有 48 个自动化用例，跑在真实的 MySQL 8.4 + Redis 7 容器上（Testcontainers），不依赖本地已启动的 docker compose：
+后端有 49 个自动化用例，跑在真实的 MySQL 8.4 + Redis 7 容器上（Testcontainers），不依赖本地已启动的 docker compose：
 
 ```bash
 cd server && ./mvnw test
@@ -303,10 +304,26 @@ cd server && ./mvnw test
 | `ApiSecurityIntegrationTest` | 401 / 403 统一 JSON、BCrypt 登录、禁用账号、关卡接口不泄题 |
 | `LevelCacheIntegrationTest` | 关卡详情/列表缓存命中、缓存空值标记、按语言分键 |
 | `LevelCacheFallbackTest` | Redis 故障时缓存自动降级回源 |
+| `LevelCacheDisabledTest` | 缓存开关关闭后只读 MySQL、不写 Redis |
 | `LoginRateLimitIntegrationTest` | 同 IP 限流 429、账号级限流跨 IP 生效 |
 | `CheckinIntegrationTest` | 打卡幂等、连续天数、BitMap 一天一位的存储占用 |
 
 为什么不用 H2：判题依赖 `SELECT ... FOR UPDATE`，排行榜依赖窗口函数，迁移脚本用到 JSON 列——这些都是 MySQL 特有行为，换成 H2 既测不出真实问题，也测不出并发。
+
+## 压测
+
+JMeter 测试计划与结果在 [perf/](perf/) 目录，完整报告见 [perf/RESULTS.md](perf/RESULTS.md)。核心结论（本机 M3，单实例）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 关卡详情，缓存开 / 关 | 11,507 → 3,027 req/s（P95 7 → 42 ms），约 **3.8 倍** |
+| 120 线程混合压测（关卡 / 排行榜 / 打卡 / 判题） | 62,000 次请求，0 错误，整体 **8,712 req/s** |
+| 判题接口（20 线程并发抢同一批对局） | P95 26 ms，0 错误 |
+| 压测期间 Redis | `keyspace_misses` 增量 **0**——50,000 次关卡详情没有一次回源 |
+
+```bash
+cd perf && jmeter -n -t libhunt-load-test.jmx -l results/results.jtl -e -o results/html
+```
 
 ## 部署（可选）
 
@@ -354,7 +371,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 
 - **关卡内容仍需改代码**：内容源文件是 TS，改完要生成迁移并重启后端；没有关卡 CMS
 - **二维码明文比对**：没做 HMAC 防伪，扫码内容泄露后可以被复制
-- **压测数据未产出**：已有 35 个集成/并发测试覆盖正确性，但还没有 JMeter 压测报告
+- **Redis 故障时没有熔断**：接口仍能 fail-open 回源 MySQL、不会报错，但每个请求要等 Redis 连接失败，延迟会劣化到秒级
+- **压测只在单机跑过**：JMeter 数据见 [perf/RESULTS.md](perf/RESULTS.md)，没有多机 / 云环境数据
 - **管理端只有基础能力**：账号管理、统计、重建排行榜；没有批量导入（Excel）与可视化图表
 - **部署未完成**：全栈版目前只在本地运行
 

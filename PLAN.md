@@ -23,7 +23,7 @@
 | 5 前端对接 | ✅ |
 | 6 部署上线 | ⬜ 可选，见阶段说明 |
 | 7 排行榜与统计 | 🚧 Redis 已完成，POI 导出未做 |
-| 8 加固与压测 | 🚧 缓存/锁/限流/打卡/测试已完成，压测数据未做 |
+| 8 加固与压测 | 🚧 缓存/锁/限流/打卡/测试/压测已完成，熔断未做 |
 | 9 文档与面试预演 | 🚧 README 已重写，面试稿未写 |
 
 > **关于部署**：部署不是"全栈项目"的必要条件——全栈指的是前端、后端、数据存储各司其职，且业务真相在服务端。部署只是让简历上的链接点得开、顺便练习 Nginx / 进程管理，优先级低于阶段 8。
@@ -202,12 +202,13 @@ player ──< game_run ──< level_attempt
 
 ### 阶段 8 · 加固与压测 🚧
 
-- [x] 自动化测试：Testcontainers 起真实 MySQL + Redis，48 个用例覆盖判题、幂等、并发、缓存、限流、打卡、排行榜兜底、RBAC
+- [x] 自动化测试：Testcontainers 起真实 MySQL + Redis，49 个用例覆盖判题、幂等、并发、缓存、限流、打卡、排行榜兜底、RBAC
 - [x] 缓存三兄弟（穿透 / 击穿 / 雪崩）
 - [x] Redisson（`RLock` 重建锁、`RRateLimiter` 令牌桶）
 - [x] BitMap 打卡
 - [x] 限流（IP + 账号两层）
-- [ ] JMeter 数据
+- [x] JMeter 数据（见 [perf/RESULTS.md](perf/RESULTS.md)）
+- [ ] 熔断：Redis 不可达时目前是每请求重试，延迟会劣化到秒级
 
 **缓存设计**
 - 穿透：查不到的 key 写 `__NULL__` 空值标记，TTL 1 分钟
@@ -227,9 +228,24 @@ player ──< game_run ──< level_attempt
 - `SETBIT` / `GETBIT` / `BITCOUNT`；连续天数在当年范围内逐位回溯
 - TTL 400 天，跨年后自然过期；时区固定 `Asia/Shanghai`
 
+**压测验收记录（2026-11-06）**
+
+完整数据与复现命令见 [perf/RESULTS.md](perf/RESULTS.md)。环境：Apple M3 / 16 GB，单实例 Spring Boot，MySQL + Redis 在 Docker。
+
+- 同一接口开/关缓存（`--libhunt.cache.enabled=false` 作为干净对照，各 3 轮取中位数）：
+  11,507 → 3,027 req/s，P95 7 → 42 ms，约 3.8 倍
+- JMeter 120 线程混合压测：62,000 次请求、7.1 秒、0 错误、整体 8,712 req/s
+- 压测期间 Redis `keyspace_misses` 增量 0，MySQL `Com_select` +22,001（全部来自判题与鉴权）
+- 判题接口 20 线程抢同一批对局：P95 26 ms、0 错误，行锁没有把连接池拖垮
+
+**压测中发现的问题**
+- Redisson 默认在 `Redisson.create()` 时连接 Redis，Redis 没起来应用会**启动失败**——已改为 `setLazyInitialization(true)`，先启动、锁和限流在运行时 fail-open
+- Redis 完全不可达时接口仍返回 200，但每个请求要等连接失败，延迟劣化到秒级；缺熔断，已记为待办
+- 压测必须在 JVM 预热后对比：冷启动第一次测得的吞吐会低一个数量级，直接比较会得出错误结论
+
 **测试验收记录（2026-11-06）**
 
-`cd server && ./mvnw test` → `Tests run: 48, Failures: 0, Errors: 0`，整套约 20 秒（首次需拉镜像）。
+`cd server && ./mvnw test` → `Tests run: 49, Failures: 0, Errors: 0`，整套约 20 秒（首次需拉镜像）。
 
 | 测试类 | 用例数 | 覆盖 |
 | --- | --- | --- |
@@ -241,6 +257,7 @@ player ──< game_run ──< level_attempt
 | `ApiSecurityIntegrationTest` | 8 | 401/403、登录、禁用账号、答案不泄露 |
 | `LevelCacheIntegrationTest` | 4 | 详情/列表缓存、空值标记、按语言分键 |
 | `LevelCacheFallbackTest` | 2 | Redis 故障降级回源 |
+| `LevelCacheDisabledTest` | 1 | 缓存开关关闭后只读 MySQL、不写 Redis |
 | `LoginRateLimitIntegrationTest` | 3 | IP 限流 429、账号级限流 |
 | `CheckinIntegrationTest` | 4 | 打卡幂等、连续天数、BitMap 存储占用 |
 

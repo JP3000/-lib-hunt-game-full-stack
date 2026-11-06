@@ -49,3 +49,9 @@ server/*.log
 
 # 旧版纯前端版本的成绩文件（全栈版成绩已迁到 MySQL）
 /game-results.json
+
+# 压测产物：token 与报告都是本机生成的
+/perf/players.csv
+/perf/results/
+/perf/report/
+/perf/jmeter.log
