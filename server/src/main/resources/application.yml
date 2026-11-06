@@ -40,6 +40,9 @@ mybatis-plus:
       id-type: auto
 
 libhunt:
+  cache:
+    # 关卡内容缓存总开关。关闭后每次读都回源 MySQL，用于排查内容不一致或做压测基线
+    enabled: ${LIBHUNT_CACHE_ENABLED:true}
   jwt:
     # 生产环境必须通过环境变量 JWT_SECRET 覆盖，且长度 >= 32 字节
     secret: ${JWT_SECRET:dev-only-change-me-please-32-bytes-minimum}

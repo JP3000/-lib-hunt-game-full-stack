@@ -34,6 +34,9 @@ public class RedissonConfig {
     @Bean(destroyMethod = "shutdown")
     public RedissonClient redissonClient() {
         Config config = new Config();
+        // 懒连接：应用启动时 Redis 不可用也能起来（锁/限流各自 fail-open），
+        // 否则一个加速层会把整个服务拖死在启动阶段。
+        config.setLazyInitialization(true);
         config.useSingleServer()
                 .setAddress("redis://" + host + ":" + port)
                 .setDatabase(database)

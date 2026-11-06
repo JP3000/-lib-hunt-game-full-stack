@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -55,6 +56,10 @@ public class LevelCache {
     private final RedissonClient redissonClient;
     private final ObjectMapper objectMapper;
 
+    /** 缓存总开关：排查内容不一致或做「无缓存」性能基线时关掉 */
+    @Value("${libhunt.cache.enabled:true}")
+    private boolean enabled;
+
     public LevelDetailVO detail(String key, Supplier<LevelDetailVO> loader) {
         return getOrLoad(key, raw -> read(raw, LevelDetailVO.class),
                 DETAIL_TTL, DETAIL_JITTER_SECONDS, loader);
@@ -68,6 +73,10 @@ public class LevelCache {
 
     private <T> T getOrLoad(String key, Function<String, T> deserialize,
                             Duration ttl, int jitterSeconds, Supplier<T> loader) {
+        if (!enabled) {
+            return loader.get();
+        }
+
         Lookup<T> cached = lookup(key, deserialize);
         if (cached.hit()) {
             return cached.value();
