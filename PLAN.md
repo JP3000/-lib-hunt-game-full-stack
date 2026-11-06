@@ -23,7 +23,7 @@
 | 5 前端对接 | ✅ |
 | 6 部署上线 | ⬜ 可选，见阶段说明 |
 | 7 排行榜与统计 | 🚧 Redis 已完成，POI 导出未做 |
-| 8 加固与压测 | 🚧 自动化测试已完成，缓存/锁/限流/压测未做 |
+| 8 加固与压测 | 🚧 缓存/锁/限流/打卡/测试已完成，压测数据未做 |
 | 9 文档与面试预演 | 🚧 README 已重写，面试稿未写 |
 
 > **关于部署**：部署不是"全栈项目"的必要条件——全栈指的是前端、后端、数据存储各司其职，且业务真相在服务端。部署只是让简历上的链接点得开、顺便练习 Nginx / 进程管理，优先级低于阶段 8。
@@ -202,16 +202,34 @@ player ──< game_run ──< level_attempt
 
 ### 阶段 8 · 加固与压测 🚧
 
-- [x] 自动化测试：Testcontainers 起真实 MySQL + Redis，35 个用例覆盖判题、幂等、并发、排行榜兜底、RBAC
-- [ ] 缓存三兄弟
-- [ ] Redisson
-- [ ] BitMap 打卡
-- [ ] 限流（可选）
+- [x] 自动化测试：Testcontainers 起真实 MySQL + Redis，48 个用例覆盖判题、幂等、并发、缓存、限流、打卡、排行榜兜底、RBAC
+- [x] 缓存三兄弟（穿透 / 击穿 / 雪崩）
+- [x] Redisson（`RLock` 重建锁、`RRateLimiter` 令牌桶）
+- [x] BitMap 打卡
+- [x] 限流（IP + 账号两层）
 - [ ] JMeter 数据
+
+**缓存设计**
+- 穿透：查不到的 key 写 `__NULL__` 空值标记，TTL 1 分钟
+- 击穿：同 key 只有一个线程 `tryLock` 回源（等待 200ms），其余线程直接读旧值/等下一次
+- 雪崩：TTL 加 0–300 秒随机抖动（列表 5 分钟 + 0–60 秒）
+- 降级：Redis 任何异常都当作 miss 回源 MySQL，不把缓存故障变成接口故障
+- key 按语言分维度：`libhunt:level:detail:{locale}:{level}`、`libhunt:level:list:{locale}`
+
+**限流设计**
+- IP 层：`LoginRateLimitInterceptor` 拦 `/api/auth/login`，1 分钟 10 次，超限返回 HTTP 429 + 统一 JSON
+- 账号层：`AuthService` 内按学号限流，防止换 IP 撞库
+- Redis 故障时 fail-open（放行），可用性优先
+- `clientIp()` 优先取 `X-Forwarded-For` 第一段，适配 Nginx 反代
+
+**打卡设计**
+- key `libhunt:checkin:{playerId}:{year}`，bit offset = `dayOfYear - 1`
+- `SETBIT` / `GETBIT` / `BITCOUNT`；连续天数在当年范围内逐位回溯
+- TTL 400 天，跨年后自然过期；时区固定 `Asia/Shanghai`
 
 **测试验收记录（2026-11-06）**
 
-`cd server && ./mvnw test` → `Tests run: 35, Failures: 0, Errors: 0`，整套约 20 秒（首次需拉镜像）。
+`cd server && ./mvnw test` → `Tests run: 48, Failures: 0, Errors: 0`，整套约 20 秒（首次需拉镜像）。
 
 | 测试类 | 用例数 | 覆盖 |
 | --- | --- | --- |
@@ -221,6 +239,10 @@ player ──< game_run ──< level_attempt
 | `LeaderboardIntegrationTest` | 4 | Redis 排序、每人最好一局、预热、rebuild |
 | `LeaderboardFallbackTest` | 2 | Redis 故障回落 MySQL、写失败不拖垮通关 |
 | `ApiSecurityIntegrationTest` | 8 | 401/403、登录、禁用账号、答案不泄露 |
+| `LevelCacheIntegrationTest` | 4 | 详情/列表缓存、空值标记、按语言分键 |
+| `LevelCacheFallbackTest` | 2 | Redis 故障降级回源 |
+| `LoginRateLimitIntegrationTest` | 3 | IP 限流 429、账号级限流 |
+| `CheckinIntegrationTest` | 4 | 打卡幂等、连续天数、BitMap 存储占用 |
 
 **踩坑记录**
 - 不能用 H2 代替 MySQL：`SELECT … FOR UPDATE` 的锁语义、窗口函数、JSON 列都是 MySQL 特有行为

@@ -52,6 +52,8 @@
 - 🌏 **三语支持** — 繁体中文 / 简体中文 / English（数据库 JSON 列存储）
 - 🎒 **道具收集** — 每关解锁剧情道具卡，可查看大图与说明
 - 🏆 **排行榜与数据看板** — Redis 排行榜、通关统计、平均分/平均耗时
+- 📅 **每日到馆打卡** — Redis BitMap 存「一年中哪几天来过」，一天一位，全年只占约 46 字节
+- ⚡ **高并发防护** — 关卡内容缓存（穿透 / 击穿 / 雪崩三重保护）、登录限流、Redis 故障自动回源 MySQL
 
 ## 架构
 
@@ -68,7 +70,7 @@
                     │            │
                     ▼            ▼
           MySQL 8.4（:3307）   Redis 7（:6380）
-          内容/对局/成绩        排行榜 ZSET
+          内容/对局/成绩     排行榜 ZSET / 关卡缓存 / BitMap 打卡 / 限流
 ```
 
 浏览器永远只和 Next.js 通信，**没有跨域、没有前端硬编码的后端地址**。部署只是把这两个进程放到服务器上、用 Nginx 做同样的 `/api` 分流，不影响项目本身的全栈性质。
@@ -83,7 +85,8 @@
 | 扫码 | [html5-qrcode](https://github.com/mebjas/html5-qrcode) |
 | 后端 | Java 21、[Spring Boot 3.5](https://spring.io/projects/spring-boot)、[MyBatis-Plus 3.5](https://baomidou.com) |
 | 数据库 | MySQL 8.4 + Flyway 迁移 |
-| 缓存 | Redis 7（排行榜 ZSET、AOF 持久化） |
+| 缓存 | Redis 7（排行榜 ZSET、关卡内容缓存、BitMap 打卡、限流，AOF 持久化） |
+| 分布式锁 / 限流 | [Redisson 3.52](https://redisson.org)（`RLock`、`RRateLimiter`） |
 | 鉴权 | JWT（jjwt 0.12）+ 拦截器 + BCrypt（spring-security-crypto） |
 | 接口文档 | springdoc-openapi（Swagger UI） |
 
@@ -199,6 +202,8 @@ docker-compose.yml                # 本地 MySQL + Redis
 | POST | `/api/runs/{id}/abandon` | 登录 | 放弃本局（重新开始） |
 | POST | `/api/runs/{id}/levels/{n}/answer` | 登录 | 提交选项，服务端判题 |
 | POST | `/api/runs/{id}/levels/{n}/qr` | 登录 | 提交现场二维码内容 |
+| GET | `/api/checkin` | 登录 | 今日是否打卡、今年累计天数、连续天数 |
+| POST | `/api/checkin` | 登录 | 今日打卡（幂等） |
 | GET | `/api/admin/stats` | ADMIN | 玩家数、通关数、平均分/耗时 |
 | GET/POST | `/api/admin/players` | ADMIN | 账号分页 / 创建 |
 | PATCH | `/api/admin/players/{id}/status` | ADMIN | 启用 / 禁用 |
@@ -282,7 +287,7 @@ node --experimental-strip-types scripts/export-levels.mjs V5__update_levels.sql
 
 ## 测试
 
-后端有 35 个自动化用例，跑在真实的 MySQL 8.4 + Redis 7 容器上（Testcontainers），不依赖本地已启动的 docker compose：
+后端有 48 个自动化用例，跑在真实的 MySQL 8.4 + Redis 7 容器上（Testcontainers），不依赖本地已启动的 docker compose：
 
 ```bash
 cd server && ./mvnw test
@@ -296,6 +301,10 @@ cd server && ./mvnw test
 | `LeaderboardIntegrationTest` | 复合排序、每人取最好一局、Redis 预热与全量重建 |
 | `LeaderboardFallbackTest` | Redis 不可用时回落 MySQL；写排行榜失败不影响通关 |
 | `ApiSecurityIntegrationTest` | 401 / 403 统一 JSON、BCrypt 登录、禁用账号、关卡接口不泄题 |
+| `LevelCacheIntegrationTest` | 关卡详情/列表缓存命中、缓存空值标记、按语言分键 |
+| `LevelCacheFallbackTest` | Redis 故障时缓存自动降级回源 |
+| `LoginRateLimitIntegrationTest` | 同 IP 限流 429、账号级限流跨 IP 生效 |
+| `CheckinIntegrationTest` | 打卡幂等、连续天数、BitMap 一天一位的存储占用 |
 
 为什么不用 H2：判题依赖 `SELECT ... FOR UPDATE`，排行榜依赖窗口函数，迁移脚本用到 JSON 列——这些都是 MySQL 特有行为，换成 H2 既测不出真实问题，也测不出并发。
 

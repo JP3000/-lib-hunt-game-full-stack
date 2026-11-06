@@ -120,3 +120,10 @@ export type AdminStats = {
   avgScore: number;
   avgDuration: number;
 };
+
+/** GET/POST /api/checkin —— Redis BitMap 记录的每日到馆 */
+export type CheckinStatus = {
+  todayChecked: boolean;
+  totalDaysThisYear: number;
+  streakDays: number;
+};

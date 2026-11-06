@@ -52,6 +52,14 @@ type Translations = {
     locked: string;
     unlockHint: string;
     stamped: string;
+    checkin: {
+      title: string;
+      hint: string;
+      button: string;
+      checkedIn: string;
+      done: (data: { total: number; streak: number }) => string;
+      error: string;
+    };
   };
   level: {
     title: (level: number) => string;
@@ -186,6 +194,14 @@ const translations: Record<Locale, Translations> = {
       locked: "未解鎖",
       unlockHint: "先完成前置關卡",
       stamped: "已蓋章",
+      checkin: {
+        title: "今日到館",
+        hint: "每日打卡，記錄你的尋寶足跡",
+        button: "打卡",
+        checkedIn: "已打卡",
+        done: ({ total, streak }) => `今年到館 ${total} 天 · 連續 ${streak} 天`,
+        error: "打卡失敗，請稍後再試",
+      },
     },
     level: {
       title: (level) => `第 ${level} 關`,
@@ -318,6 +334,14 @@ const translations: Record<Locale, Translations> = {
       locked: "未解锁",
       unlockHint: "先完成前置关卡",
       stamped: "已盖章",
+      checkin: {
+        title: "今日到馆",
+        hint: "每日打卡，记录你的寻宝足迹",
+        button: "打卡",
+        checkedIn: "已打卡",
+        done: ({ total, streak }) => `今年到馆 ${total} 天 · 连续 ${streak} 天`,
+        error: "打卡失败，请稍后再试",
+      },
     },
     level: {
       title: (level) => `第 ${level} 关`,
@@ -449,6 +473,14 @@ const translations: Record<Locale, Translations> = {
       locked: "Locked",
       unlockHint: "Finish the previous level first",
       stamped: "Stamped",
+      checkin: {
+        title: "Library Check-in",
+        hint: "Check in each day to record your hunt",
+        button: "Check in",
+        checkedIn: "Checked in",
+        done: ({ total, streak }) => `${total} days this year · ${streak}-day streak`,
+        error: "Check-in failed, please try again",
+      },
     },
     level: {
       title: (level) => `Level ${level}`,
