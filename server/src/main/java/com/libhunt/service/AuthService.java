@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -27,9 +29,16 @@ public class AuthService {
     private final PlayerMapper playerMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final RateLimiterService rateLimiterService;
 
     public LoginVO login(LoginRequest request) {
         String studentNo = request.studentNo().trim();
+
+        // 账号维度限流：换 IP 也挡得住针对同一账号的撞库
+        if (!rateLimiterService.tryAcquire(
+                "libhunt:ratelimit:login:account:" + studentNo, 10, Duration.ofMinutes(1))) {
+            throw new BusinessException("登录尝试过于频繁，请稍后再试");
+        }
 
         Player player = playerMapper.selectOne(
                 new LambdaQueryWrapper<Player>()

@@ -1,6 +1,7 @@
 package com.libhunt.config;
 
 import com.libhunt.interceptor.JwtInterceptor;
+import com.libhunt.interceptor.LoginRateLimitInterceptor;
 import com.libhunt.interceptor.RoleInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
@@ -14,9 +15,15 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     private final JwtInterceptor jwtInterceptor;
     private final RoleInterceptor roleInterceptor;
+    private final LoginRateLimitInterceptor loginRateLimitInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        // 最先执行：限流不需要知道「你是谁」
+        registry.addInterceptor(loginRateLimitInterceptor)
+                .order(-1)
+                .addPathPatterns("/api/auth/login");
+
         registry.addInterceptor(jwtInterceptor)
                 .order(0)
                 .addPathPatterns("/api/**")
