@@ -376,6 +376,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 | 文档 | 内容 |
 | --- | --- |
 | [PLAN.md](PLAN.md) | 改造计划、阶段进度、验收记录与踩坑 |
+| [docs/PROJECT-GUIDE.md](docs/PROJECT-GUIDE.md) | 项目教学与面试指南：自我介绍、简历写法、全链路走读、面试题速查 |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | 表结构、索引、Redis 数据结构与设计取舍 |
 | [docs/BEFORE-AFTER.md](docs/BEFORE-AFTER.md) | 纯前端 → 全栈的改造前后对比 |
 | [docs/INTERVIEW.md](docs/INTERVIEW.md) | 每个技术点的 3 分钟讲稿与追问 |

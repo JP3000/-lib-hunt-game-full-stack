@@ -269,6 +269,7 @@ player ──< game_run ──< level_attempt
 - [x] 压测数据：[perf/RESULTS.md](perf/RESULTS.md)
 - [x] 改造前后对比：[docs/BEFORE-AFTER.md](docs/BEFORE-AFTER.md)
 - [x] 每个技术点脱稿 3 分钟：[docs/INTERVIEW.md](docs/INTERVIEW.md)
+- [x] 教学与求职指南（简历写法 / 全链路走读 / 面试速查 / 自测清单）：[docs/PROJECT-GUIDE.md](docs/PROJECT-GUIDE.md)
 
 ## 明确不做
 
