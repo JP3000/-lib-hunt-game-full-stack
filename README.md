@@ -371,8 +371,10 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 
 - **关卡内容仍需改代码**：内容源文件是 TS，改完要生成迁移并重启后端；没有关卡 CMS
 - **二维码明文比对**：没做 HMAC 防伪，扫码内容泄露后可以被复制
+- **禁用账号不能立即踢下线**：JWT 无状态，禁用后已签发的 token 在有效期（12 小时）内仍可用；要立即生效需要加 Redis 黑名单
 - **Redis 故障时没有熔断**：接口仍能 fail-open 回源 MySQL、不会报错，但每个请求要等 Redis 连接失败，延迟会劣化到秒级
 - **压测只在单机跑过**：JMeter 数据见 [perf/RESULTS.md](perf/RESULTS.md)，没有多机 / 云环境数据
+- **排行榜读路径仍回源 MySQL**：Redis 只负责排序，昵称与分数要批量补查；压测里 9,000 次读取产生 1.8 万次 SELECT，量级不大但可以进一步缓存整张榜
 - **管理端只有基础能力**：账号管理、统计、重建排行榜；没有批量导入（Excel）与可视化图表
 - **部署未完成**：全栈版目前只在本地运行
 
@@ -381,6 +383,10 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 | 文档 | 内容 |
 | --- | --- |
 | [PLAN.md](PLAN.md) | 改造计划、阶段进度、验收记录与踩坑 |
+| [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | 表结构、索引、Redis 数据结构与设计取舍 |
+| [docs/BEFORE-AFTER.md](docs/BEFORE-AFTER.md) | 纯前端 → 全栈的改造前后对比 |
+| [docs/INTERVIEW.md](docs/INTERVIEW.md) | 每个技术点的 3 分钟讲稿与追问 |
+| [perf/](perf/) | JMeter 方案与压测结果 |
 | [DEPLOY.md](DEPLOY.md) | 旧版纯前端部署（全栈部署待重写） |
 | [AGENTS.md](AGENTS.md) | AI 编程工具使用约定 |
 | [public/docs/](public/docs/) | 游戏剧情与媒体素材制作方案 |
