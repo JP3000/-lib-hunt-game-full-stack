@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  * 复合排序怎么塞进一个 double：
  * {@code score = totalScore * 100000 + (100000 - durationSeconds)}。
  * 分数越高越靠前；同分时用时越短，「尾数」越大，排名越靠前。
- * 本项目满分 1200，乘以 10 万后仍在 double 的精确整数范围内（2^53）。
+ * 本项目满分 240，乘以 10 万后仍在 double 的精确整数范围内（2^53）。
  */
 @Slf4j
 @Service

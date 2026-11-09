@@ -59,6 +59,7 @@ public class GameRunService {
     private final LevelItemMapper levelItemMapper;
     private final ItemMapper itemMapper;
     private final LeaderboardService leaderboardService;
+    private final QrTokenService qrTokenService;
 
     // ------------------------------------------------------------------ 开局
 
@@ -140,9 +141,9 @@ public class GameRunService {
         Level level = requireLevel(levelNo);
         LevelAttempt attempt = findAttempt(runId, levelNo);
 
-        // 幂等：已答对就直接返回原结果，不重复计分
+        // 幂等：已通过本题就直接返回原结果，不重复计分
         if (attempt != null && isTrue(attempt.getQuestionPassed())) {
-            return answerResult(attempt, true, attempt.getScore(), null);
+            return answerResult(attempt, null);
         }
         if (!GameRun.IN_PROGRESS.equals(run.getStatus())) {
             throw new BusinessException("本局已结束，请重新开始");
@@ -151,34 +152,39 @@ public class GameRunService {
 
         Set<String> submitted = normalizeOptions(optionIds);
         Set<String> correctKeys = new HashSet<>(level.getCorrectOptionKeys());
-        boolean correct = !submitted.isEmpty() && submitted.equals(correctKeys);
+
+        // 少选得部分分、错选不得分：选到任何错误选项本题都是 0 分；
+        // 只选对一部分正确选项则按比例得分；全部选对得满分。
+        int score = GameRules.hasWrongOption(submitted, correctKeys)
+                ? 0
+                : GameRules.scoreFor(submitted.size(), correctKeys.size());
+        boolean questionPassed = score > 0;
 
         int attempts = (attempt == null ? 0 : attempt.getAttempts()) + 1;
-        int score = correct ? GameRules.scoreFor(attempts) : 0;
 
         if (attempt == null) {
             attempt = newAttempt(runId, levelNo);
             attempt.setAttempts(attempts);
             attempt.setScore(score);
-            attempt.setQuestionPassed(correct ? 1 : 0);
+            attempt.setQuestionPassed(questionPassed ? 1 : 0);
             levelAttemptMapper.insert(attempt);
         } else {
             attempt.setAttempts(attempts);
-            if (correct) {
+            if (questionPassed) {
                 attempt.setScore(score);
                 attempt.setQuestionPassed(1);
             }
             levelAttemptMapper.updateById(attempt);
         }
 
-        SettlementVO settlement = correct ? maybeSettle(run, attempt, levelNo, level) : null;
-        return answerResult(attempt, correct, score, settlement);
+        SettlementVO settlement = questionPassed ? maybeSettle(run, attempt, levelNo, level) : null;
+        return answerResult(attempt, settlement);
     }
 
     // -------------------------------------------------------------- 扫码验证
 
     @Transactional
-    public QrResultVO submitQr(Long playerId, Long runId, int levelNo, String qrAnswer) {
+    public QrResultVO submitQr(Long playerId, Long runId, int levelNo, String qrToken) {
         GameRun run = lockRun(playerId, runId);
         Level level = requireLevel(levelNo);
         LevelAttempt attempt = findAttempt(runId, levelNo);
@@ -192,7 +198,7 @@ public class GameRunService {
         }
         requireCurrentLevel(run, levelNo);
 
-        if (!normalizeQr(qrAnswer).equals(normalizeQr(level.getQrAnswer()))) {
+        if (!qrTokenService.verify(levelNo, qrToken, level.getQrAnswer())) {
             // 扫码失败不扣分：现场找错位置已经够惨了
             return new QrResultVO(false,
                     attempt != null && isTrue(attempt.getQuestionPassed()), false, null);
@@ -273,12 +279,12 @@ public class GameRunService {
         return attempt;
     }
 
-    private AnswerResultVO answerResult(LevelAttempt attempt, boolean correct, int score,
-                                        SettlementVO settlement) {
+    private AnswerResultVO answerResult(LevelAttempt attempt, SettlementVO settlement) {
         boolean questionPassed = isTrue(attempt.getQuestionPassed());
         boolean qrPassed = isTrue(attempt.getQrPassed());
-        String nextAction = !correct ? "RETRY" : (qrPassed ? "NEXT" : "SCAN_QR");
-        return new AnswerResultVO(correct, attempt.getAttempts(), score,
+        String nextAction = !questionPassed ? "RETRY" : (qrPassed ? "NEXT" : "SCAN_QR");
+        // correct 表示「本次提交是否通过本题」；少选拿到部分分也算通过，但不一定满分
+        return new AnswerResultVO(questionPassed, attempt.getAttempts(), attempt.getScore(),
                 questionPassed, qrPassed, nextAction, settlement);
     }
 
@@ -384,10 +390,6 @@ public class GameRunService {
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    private String normalizeQr(String raw) {
-        return raw == null ? "" : raw.replaceAll("\\s+", "").toLowerCase();
     }
 
     private boolean isTrue(Integer flag) {

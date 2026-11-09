@@ -1,0 +1,151 @@
+# LibHunt 后端接口速查（IntelliJ IDEA HTTP Client）
+#
+# 用法：
+#   1. 先运行「登录」，响应处理器会把 token 写进变量 {{token}}
+#   2. 再运行「开局」，会把 runId 写进变量 {{runId}}
+#   3. 之后可以按任意顺序运行其余请求
+#   4. 也可以点编辑器顶部的 Run All 顺序执行
+#
+# 默认账号是首次启动自动创建的管理员 admin / Admin@123456。
+# 学生可以直接用「学生学号直登」请求，只传学号；首次登录会自动创建账号。
+# 管理员同样可以玩；想用密码创建学生，也可以调用「管理端：创建账号」。
+#
+# 注意：登录有限流（IP + 账号各 10 次/分钟），连续刷会返回 429，等一分钟即可。
+
+@host = http://localhost:8080
+
+### 1. 登录（管理员）
+# @name login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "studentNo": "admin",
+  "password": "Admin@123456"
+}
+
+> {%
+    client.test("登录成功", function () {
+        client.assert(response.body.code === 0, "登录失败：" + response.body.msg);
+    });
+    if (response.body.code === 0) {
+        client.global.set("token", response.body.data.token);
+    }
+%}
+
+### 1b. 学生学号直登（只传学号；首次自动创建学生账号）
+# @name studentLogin
+POST {{host}}/api/auth/student-login
+Content-Type: application/json
+
+{
+  "studentNo": "ab565666"
+}
+
+> {%
+    client.test("学生登录成功", function () {
+        client.assert(response.body.code === 0, "学生登录失败：" + response.body.msg);
+    });
+    if (response.body.code === 0) {
+        client.global.set("studentToken", response.body.data.token);
+    }
+%}
+
+### 2. 当前账号
+GET {{host}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### 3. 关卡列表（默认繁体中文）
+GET {{host}}/api/levels?locale=zh-Hant
+Authorization: Bearer {{token}}
+
+### 4. 第 1 关详情（不含答案）
+GET {{host}}/api/levels/1?locale=zh-Hant
+Authorization: Bearer {{token}}
+
+### 5. 开局（已有进行中的对局则直接返回该局）
+# @name startRun
+POST {{host}}/api/runs
+Authorization: Bearer {{token}}
+Idempotency-Key: idea-{{$timestamp}}
+
+> {%
+    client.test("开局成功", function () {
+        client.assert(response.body.code === 0, "开局失败：" + response.body.msg);
+    });
+    if (response.body.code === 0) {
+        client.global.set("runId", response.body.data.runId);
+    }
+%}
+
+### 6. 当前对局
+GET {{host}}/api/runs/current
+Authorization: Bearer {{token}}
+
+### 7. 第 1 关答题（正确答案是 b）
+POST {{host}}/api/runs/{{runId}}/levels/1/answer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "optionIds": ["b"]
+}
+
+### 8. 管理端：签发第 1 关二维码（带过期时间，默认 7 天）
+# 把返回的 token 打印成二维码贴在现场；学生扫到的就是这段内容。
+# @name issueQr
+GET {{host}}/api/admin/levels/1/qr?ttlSeconds=604800
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("签发成功", function () {
+        client.assert(response.body.code === 0, "签发失败：" + response.body.msg);
+    });
+    if (response.body.code === 0) {
+        client.global.set("qrToken", response.body.data.token);
+    }
+%}
+
+### 9. 第 1 关扫码（先扫码或先答题都可以，最后完成的动作触发结算）
+POST {{host}}/api/runs/{{runId}}/levels/1/qr
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "answer": "{{qrToken}}"
+}
+
+### 10. 排行榜前 10
+GET {{host}}/api/leaderboard?limit=10
+Authorization: Bearer {{token}}
+
+### 11. 放弃当前对局（用于重新开始）
+POST {{host}}/api/runs/{{runId}}/abandon
+Authorization: Bearer {{token}}
+
+### 12. 管理端：总览统计
+GET {{host}}/api/admin/stats
+Authorization: Bearer {{token}}
+
+### 13. 管理端：账号分页
+GET {{host}}/api/admin/players?page=1&size=20
+Authorization: Bearer {{token}}
+
+### 14. 管理端：创建学生账号（重复执行会因学号已存在而失败）
+POST {{host}}/api/admin/players
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "studentNo": "ab565699",
+  "nickname": "演示账号",
+  "initialPassword": "Demo@123456",
+  "role": "STUDENT"
+}
+
+### 15. 管理端：重建排行榜（Redis 数据丢失后使用）
+POST {{host}}/api/admin/leaderboard/rebuild
+Authorization: Bearer {{token}}
+
+### 16. 健康检查（无需登录）
+GET {{host}}/api/health

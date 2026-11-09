@@ -6,11 +6,13 @@ import com.libhunt.dto.SettlementVO;
 import com.libhunt.entity.Level;
 import com.libhunt.entity.Player;
 import com.libhunt.service.GameRunService;
+import com.libhunt.service.QrTokenService;
 import com.libhunt.support.IntegrationTestBase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -29,6 +31,9 @@ class GameRunConcurrencyIntegrationTest extends IntegrationTestBase {
 
     @Autowired
     private GameRunService gameRunService;
+
+    @Autowired
+    private QrTokenService qrTokenService;
 
     @Test
     @DisplayName("10 个并发的错误答案只落一行记录，但累计 10 次尝试")
@@ -54,7 +59,7 @@ class GameRunConcurrencyIntegrationTest extends IntegrationTestBase {
         RunStateVO run = gameRunService.start(player.getId(), null);
         Level level = level(1);
         List<String> correct = level.getCorrectOptionKeys();
-        String qrAnswer = level.getQrAnswer();
+        String qrAnswer = qrToken(level);
 
         List<Callable<SettlementVO>> tasks = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
@@ -70,9 +75,41 @@ class GameRunConcurrencyIntegrationTest extends IntegrationTestBase {
         assertThat(settlements.stream().filter(Objects::nonNull)).hasSize(1);
 
         RunStateVO current = gameRunService.current(player.getId());
-        assertThat(current.totalScore()).isEqualTo(100);
+        assertThat(current.totalScore()).isEqualTo(20);
         assertThat(current.lastLevelNo()).isEqualTo(2);
         assertThat(settledRowsOf(run.runId())).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("两个不同玩家同时通关，各自锁自己的 game_run 行，互不阻塞")
+    void twoPlayersCompleteConcurrentlyWithoutBlockingEachOther() throws Exception {
+        Player alice = createPlayer("conc-player-a");
+        Player bob = createPlayer("conc-player-b");
+        RunStateVO runA = gameRunService.start(alice.getId(), null);
+        RunStateVO runB = gameRunService.start(bob.getId(), null);
+        Level level = level(1);
+
+        List<Callable<SettlementVO>> tasks = List.of(
+                () -> {
+                    gameRunService.submitAnswer(
+                            alice.getId(), runA.runId(), 1, level.getCorrectOptionKeys());
+                    return gameRunService.submitQr(
+                            alice.getId(), runA.runId(), 1, qrToken(level)).settlement();
+                },
+                () -> {
+                    gameRunService.submitAnswer(
+                            bob.getId(), runB.runId(), 1, level.getCorrectOptionKeys());
+                    return gameRunService.submitQr(
+                            bob.getId(), runB.runId(), 1, qrToken(level)).settlement();
+                });
+
+        List<SettlementVO> settlements = runConcurrently(tasks);
+
+        assertThat(settlements).allSatisfy(s -> assertThat(s).isNotNull());
+        assertThat(settlements).extracting(SettlementVO::totalScore)
+                .containsExactlyInAnyOrder(20, 20);
+        assertThat(gameRunService.current(alice.getId()).totalScore()).isEqualTo(20);
+        assertThat(gameRunService.current(bob.getId()).totalScore()).isEqualTo(20);
     }
 
     @Test
@@ -106,5 +143,10 @@ class GameRunConcurrencyIntegrationTest extends IntegrationTestBase {
                 "SELECT COUNT(*) FROM game_run WHERE player_id = ?",
                 Integer.class, player.getId());
         assertThat(rows).isEqualTo(1);
+    }
+
+    /** 按生产逻辑签发一枚有效期 1 天的关卡二维码。 */
+    private String qrToken(Level level) {
+        return qrTokenService.issue(level.getLevelNo(), level.getQrAnswer(), Duration.ofDays(1));
     }
 }

@@ -12,7 +12,7 @@
 
 **追问：前端连答案都拿不到，怎么知道答没答对？**
 
-服务端返回 `correct` 和下一动作（重试 / 扫码 / 下一关），前端只负责展示。正确答案永远不会出现在任何响应里，`ApiSecurityIntegrationTest` 会断言 `/api/levels/{n}` 的响应不含 `correctOptionKeys`、`qrAnswer`、`passwordHash`。
+服务端返回 `correct`、本题得分和下一动作（重试 / 扫码 / 下一关）；答错时前端不提示，只允许继续尝试。正确答案永远不会出现在任何响应里，`ApiSecurityIntegrationTest` 会断言 `/api/levels/{n}` 的响应不含 `correctOptionKeys`、`qrAnswer`、`passwordHash`。
 
 **代码**：`server/.../service/GameRunService.java`、`dto/LevelDetailVO.java`、`ApiSecurityIntegrationTest`
 
@@ -32,9 +32,13 @@
 
 **追问：答题接口重试会扣两次分吗？**
 
-不会。答对后再提交，走"已通过直接返回"分支；答错重试本来就该加 attempts，这是规则。
+不会。本题通过后再提交，走"已通过直接返回"分支；答错重试只加 attempts，这是规则。
 
-**代码**：`GameRunService#start/submitAnswer/submitQr`、`db/migration/V2`、`V4`
+**追问：多选题怎么计分？为什么不是全对 20、其它 0？**
+
+`GameRules` 把每关 20 分按正确选项平分：只选对一部分得部分分，选到任何错误选项本题 0 分（但不倒扣）。本题一旦通过就锁定分数，重试不能把少选的分补回来——否则大家都能刷到满分。前端答错时不显示任何提示，只允许继续尝试。
+
+**代码**：`GameRunService#start/submitAnswer/submitQr`、`GameRules`、`db/migration/V2`、`V4`
 
 ---
 
@@ -48,7 +52,7 @@
 
 **追问：为什么不用 Redis 分布式锁？**
 
-行锁已经够用：锁的粒度是"一局"，热点只可能出现在同一局（一个玩家不会自己并发抢同一局，但网络重试会）。Redis 锁多一次网络往返，还要处理锁超时、续期、误删，收益不如数据库行锁直接。缓存重建那种"跨请求、跨实例"的场景才用 Redisson。
+行锁已经够用：锁的粒度是"一局"，热点只可能出现在同一局（一个玩家不会自己并发抢同一局，但网络重试会）。Redis 锁多一次网络往返，还要处理锁超时、续期、误删，收益不如数据库行锁直接。本项目不需要分布式锁；Redisson 只用于跨实例共享的登录限流令牌桶。
 
 **追问：10 个请求同时第一次答题会怎样？**
 
@@ -66,7 +70,7 @@ Redis ZSET 的 score 编码两个维度：`totalScore * 100000 + (100000 - durat
 
 **追问：为什么用乘法而不是两个 ZSET？**
 
-两个 ZSET 要两次查询再求交，还要处理"分数相同"的边界。编码成一个 double 后，`ZREVRANGE` 一次就出结果。满分 1200，乘 10 万是 1.2 亿，远在 double 精确整数范围（2^53）内。
+两个 ZSET 要两次查询再求交，还要处理"分数相同"的边界。编码成一个 double 后，`ZREVRANGE` 一次就出结果。满分 240，乘 10 万是 2400 万，远在 double 精确整数范围（2^53）内。
 
 **追问：afterCommit 怎么做的？**
 
@@ -84,27 +88,26 @@ Redis 只负责排序，取前 N 个 runId 后还要 `selectBatchIds` 从 MySQL 
 
 ---
 
-## 5. 缓存三兄弟与 fail-open
+## 5. 二维码签名与 Redis 降级
 
 **30 秒**
 
-关卡内容是典型的读多写少，做了 Cache-Aside：
+现场二维码不是固定密码，而是服务端签发的 `v1.<levelNo>.<expire>.<hmac>`：
 
-- **穿透**：查不到的 key 写 `__NULL__` 空标记，1 分钟 TTL
-- **击穿**：过期时用 Redisson `RLock` 只放一个请求回源，拿不到锁等 200ms 就自己回源，不把请求拖死
-- **雪崩**：TTL 加随机抖动（详情 30 分钟 + 0–300 秒，列表 5 分钟 + 0–60 秒）
+- 签名密钥 = 服务端私钥 + 该关数据库里的 `qr_answer`，两者都不下发给客户端
+- 过期时间写进内容，二维码被拍照转发，过了有效期也失效
+- 校验时检查关卡号、过期时间，并用常量时间比较 HMAC
+- 签发接口 `GET /api/admin/levels/{n}/qr` 只给管理员用，默认有效期 7 天
 
-Redis 只是加速层：读写异常都当未命中回源 MySQL，接口不报错。
+**追问：为什么不把二维码内容存 Redis 或 token 表？**
 
-**追问：既然 fail-open，为什么不把所有异常都吞掉？**
+二维码是现场凭证，不是业务数据。签名方案不需要额外存储和清理，校验是纯计算；要吊销就换密钥或等过期。少一张表、少一个一致性负担。
 
-要区分"读失败"和"业务不存在"。缓存读失败 → 回源；回源查不到 → 这是业务结果，要缓存空值并返回"关卡不存在"。两者都不能变成 500。
+**追问：Redis 挂了接口还能用吗？**
 
-**追问：实测收益？**
+能。排行榜回落 MySQL 窗口函数，登录限流 fail-open，接口不报错。但每个请求要等 Redis 连接失败，延迟会劣化到秒级——目前没有熔断，这是已知短板。
 
-同一接口开/关缓存：11,507 → 3,027 req/s，P95 7 → 42 ms。压测期间 Redis `keyspace_misses` 增量为 0，5 万次关卡详情没有一次回源。见 [perf/RESULTS.md](../perf/RESULTS.md)。
-
-**代码**：`service/LevelCache.java`、`LevelCacheIntegrationTest`
+**代码**：`service/QrTokenService.java`、`QrTokenServiceTest`、`LeaderboardService`
 
 ---
 
@@ -126,33 +129,11 @@ HTTP 状态码表达"请求太频繁"是标准语义，网关、监控、前端�
 
 ---
 
-## 7. BitMap 打卡
+## 7. 测试：Testcontainers 与为什么不用 H2
 
 **30 秒**
 
-「今年哪几天来过」是一组布尔值，正好用 BitMap：key 是 `libhunt:checkin:{playerId}:{year}`，bit offset = `dayOfYear - 1`。打卡是 `SETBIT`，今天是否打过是 `GETBIT`，累计天数是 `BITCOUNT`。一年 365 天只占 46 字节，比每天存一行省得多。
-
-**追问：连续天数怎么算？**
-
-从今天往回逐位查，最多回溯 366 天。O(天数) 次 `GETBIT`，但都在同一个 key 上，实际是按字节读取的本地位运算，成本可以忽略。
-
-**追问：为什么 TTL 400 天？**
-
-跨年后旧 key 自然过期，不需要定时任务清理；400 天留出时区/补卡的余量。时区固定 `Asia/Shanghai`，避免服务器在 UTC 时"今天"和用户看到的不是同一天。
-
-**追问：BitMap 的缺点？**
-
-只能存布尔值；如果以后要记录"几点打卡"，就得换结构（比如 ZSET 或 Hash）。当前需求只有"来没来"，所以合适。
-
-**代码**：`service/CheckinService.java`、`CheckinIntegrationTest`
-
----
-
-## 8. 测试：Testcontainers 与为什么不用 H2
-
-**30 秒**
-
-49 个用例，其中集成测试用 Testcontainers 起真实的 `mysql:8.4` 和 `redis:7`，容器在静态块里共享，整套约 20 秒。并发用例用 `CountDownLatch` 做发令枪，10 个线程同时提交。
+54 个用例，其中集成测试用 Testcontainers 起真实的 `mysql:8.4` 和 `redis:7`，容器在静态块里共享，整套约 20 秒。并发用例用 `CountDownLatch` 做发令枪，10 个线程同时提交。
 
 **追问：为什么不用 H2？**
 
@@ -166,17 +147,17 @@ Spring 测试的 `@Transactional` 会在测试结束时回滚，但更关键的�
 
 ---
 
-## 9. 压测：怎么测、测出了什么
+## 8. 压测：怎么测、测出了什么
 
 **30 秒**
 
-JMeter 120 线程混合场景（关卡 / 排行榜 / 打卡 / 判题），62,000 次请求、0 错误、整体 8,712 req/s；再用 `ab` 对同一接口做开/关缓存的 A/B：11,507 vs 3,027 req/s。
+JMeter 120 线程混合场景（关卡 / 排行榜 / 判题），62,000 次请求、0 错误、整体 8,712 req/s（当时还带关卡缓存）；移除缓存后，关卡详情单接口 3,027 req/s、P95 43 ms。
 
 **追问：为什么数据可信？**
 
-- 必须 JVM 预热后再测。第一次冷启动测出 61 req/s，差点以为缓存写坏了
-- 关缓存不是"停 Redis"，而是跑同一个接口的 MySQL 路径（`libhunt.cache.enabled=false`），否则测到的是 Redis 故障重试的耗时
-- 同时看 Redis `keyspace_misses` 和 MySQL `Com_select`，确认缓存真的挡住了回源
+- 必须 JVM 预热后再测。第一次冷启动测出 61 req/s，差点以为代码写坏了，其实是 JIT 还没热
+- 单接口对照走的是同一条 MySQL 路径，不是"停掉 Redis"；后者测到的是连接失败重试的耗时
+- 同时看 MySQL `Com_select`，确认请求真的打到了数据库
 
 **追问：压测发现了什么？**
 
@@ -189,7 +170,7 @@ JMeter 120 线程混合场景（关卡 / 排行榜 / 打卡 / 判题），62,000
 
 ---
 
-## 10. 全栈架构：为什么浏览器只访问 Next.js
+## 9. 全栈架构：为什么浏览器只访问 Next.js
 
 **30 秒**
 

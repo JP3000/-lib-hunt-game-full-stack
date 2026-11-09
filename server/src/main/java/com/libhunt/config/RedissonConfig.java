@@ -9,11 +9,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.util.StringUtils;
 
 /**
- * Redisson 客户端：只用来做分布式锁与限流，不接管 Spring Data Redis 的
+ * Redisson 客户端：只用来做登录限流，不接管 Spring Data Redis 的
  * {@code StringRedisTemplate}（排行榜仍走它）。
  * <p>
  * 连接参数复用 {@code spring.data.redis.*}，避免同一份配置写两处。
- * 超时与重试刻意调小：Redis 只是加速层，挂了应该快速失败并回源 MySQL，
+ * 超时与重试刻意调小：Redis 只承担排行榜与限流，故障时应该快速失败并降级，
  * 而不是把请求卡住。
  */
 @Configuration

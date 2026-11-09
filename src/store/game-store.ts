@@ -30,7 +30,8 @@ type GameState = {
   lastCompletionDuration: number | null;
 
   setHasHydrated: (hydrated: boolean) => void;
-  login: (studentNo: string, password: string) => Promise<void>;
+  /** 学生只传学号；管理员传学号 + 密码 */
+  login: (studentNo: string, password?: string) => Promise<void>;
   logout: () => void;
   /** 从服务端恢复进度（刷新页面、换设备都能续玩） */
   refreshRun: () => Promise<void>;
@@ -93,10 +94,16 @@ export const useGameStore = create<GameState>()(
       setHasHydrated: (hydrated) => set({ hasHydrated: hydrated }),
 
       login: async (studentNo, password) => {
-        const data = await apiFetch<LoginVO>("/api/auth/login", {
-          method: "POST",
-          body: { studentNo, password },
-        });
+        // 有密码走普通登录（管理员）；没有密码走学号直登（学生）
+        const data = password
+          ? await apiFetch<LoginVO>("/api/auth/login", {
+              method: "POST",
+              body: { studentNo, password },
+            })
+          : await apiFetch<LoginVO>("/api/auth/student-login", {
+              method: "POST",
+              body: { studentNo },
+            });
         setToken(data.token);
 
         const isStaff = data.player.role === "STAFF" || data.player.role === "ADMIN";

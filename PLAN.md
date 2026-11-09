@@ -23,8 +23,11 @@
 | 5 前端对接 | ✅ |
 | 6 部署上线 | — 不做，作品集项目不需要线上地址 |
 | 7 排行榜与统计 | 🚧 Redis 已完成，POI 导出未做 |
-| 8 加固与压测 | 🚧 缓存/锁/限流/打卡/测试/压测已完成，熔断未做 |
+| 8 加固与压测 | 🚧 二维码签名/限流/测试/压测已完成，熔断未做 |
 | 9 文档与面试预演 | ✅ README、数据模型、改造对比、面试稿、压测报告均已产出 |
+
+> **2026-11-08 计分规则调整**：改为每关 20 分、12 关满分 240；多选按正确选项平分，少选得部分分、错选不得分，答错不扣分且前端不提示。
+> 阶段 4 / 7 的历史验收记录保留调整前的 100 / 1200 数字，用于追溯当时的测试结果。
 
 > **关于部署**：不做。这是作品集项目，价值在代码和设计本身，不在于有一个公网地址；本地 docker compose + 两个进程就是完整系统。面试需要演示时直接在本机跑。
 
@@ -122,7 +125,7 @@ player ──< game_run ──< level_attempt
 - 「答题」与「现场扫码」是两道**相互独立**的验证，先做哪个都行（现场流程是先扫码后答题）
 - 两道都通过的那一次请求才触发结算；`qrLocation` 只是地点提示，不是答案，随关卡详情下发
 - 关卡顺序由 `game_run.last_level_no` 决定，跳关直接拒绝
-- 计分在服务端：每关 100，答错一次 −20，最低 20（`GameRules`）
+- 计分在服务端：每关 20，多选少选得部分分、错选不得分，答错不扣分，12 关满分 240（`GameRules`）
 - 用时 = `finished_at - started_at`，客户端传什么都不作数
 
 **并发与幂等**
@@ -181,7 +184,7 @@ player ──< game_run ──< level_attempt
 
 **实现要点**
 - `ZSET` member = `runId`，score = `totalScore * 100000 + (100000 - durationSeconds)`：
-  分数高的在前，同分时用时短的在前；满分 1200，乘 10 万仍在 double 精确整数范围内
+  分数高的在前，同分时用时短的在前；满分 240，乘 10 万仍在 double 精确整数范围内
 - 通关后**事务提交后**才写 Redis（`TransactionSynchronization#afterCommit`），避免回滚留下假成绩
 - 读取失败/Redis 为空 → 自动回落 MySQL，并顺带预热 ZSET；`ZSET` 只保留前 1000 名
 - 管理端 `POST /api/admin/leaderboard/rebuild` 可从 MySQL 全量重建
@@ -197,20 +200,19 @@ player ──< game_run ──< level_attempt
 
 ### 阶段 8 · 加固与压测 🚧
 
-- [x] 自动化测试：Testcontainers 起真实 MySQL + Redis，49 个用例覆盖判题、幂等、并发、缓存、限流、打卡、排行榜兜底、RBAC
-- [x] 缓存三兄弟（穿透 / 击穿 / 雪崩）
-- [x] Redisson（`RLock` 重建锁、`RRateLimiter` 令牌桶）
-- [x] BitMap 打卡
+- [x] 自动化测试：Testcontainers 起真实 MySQL + Redis，54 个用例覆盖判题、幂等、并发、二维码签名、限流、排行榜兜底、RBAC
+- [x] 二维码 HMAC 签名与过期时间（服务端签发，二维码被转发也会失效）
+- [x] Redisson（`RRateLimiter` 令牌桶）
 - [x] 限流（IP + 账号两层）
 - [x] JMeter 数据（见 [perf/RESULTS.md](perf/RESULTS.md)）
 - [ ] 熔断：Redis 不可达时目前是每请求重试，延迟会劣化到秒级
 
-**缓存设计**
-- 穿透：查不到的 key 写 `__NULL__` 空值标记，TTL 1 分钟
-- 击穿：同 key 只有一个线程 `tryLock` 回源（等待 200ms），其余线程直接读旧值/等下一次
-- 雪崩：TTL 加 0–300 秒随机抖动（列表 5 分钟 + 0–60 秒）
-- 降级：Redis 任何异常都当作 miss 回源 MySQL，不把缓存故障变成接口故障
-- key 按语言分维度：`libhunt:level:detail:{locale}:{level}`、`libhunt:level:list:{locale}`
+**二维码签名设计**
+- 内容格式：`v1.<levelNo>.<expireEpochSecond>.<hex(HMAC-SHA256)>`
+- 签名密钥 = `LIBHUNT_QR_SECRET` + 该关数据库里的 `qr_answer`，两者都不下发客户端
+- 校验：关卡号一致、未过期、常量时间比较签名；大小写与首尾空白容错
+- 签发：`GET /api/admin/levels/{n}/qr?ttlSeconds=...`，默认 7 天，供管理员打印现场二维码
+- 已移除关卡内容缓存：12 关 × 3 语言的数据量很小，读 MySQL 已足够快，多一层缓存反而增加一致性与故障处理成本
 
 **限流设计**
 - IP 层：`LoginRateLimitInterceptor` 拦 `/api/auth/login`，1 分钟 10 次，超限返回 HTTP 429 + 统一 JSON
@@ -218,43 +220,35 @@ player ──< game_run ──< level_attempt
 - Redis 故障时 fail-open（放行），可用性优先
 - `clientIp()` 优先取 `X-Forwarded-For` 第一段，适配 Nginx 反代
 
-**打卡设计**
-- key `libhunt:checkin:{playerId}:{year}`，bit offset = `dayOfYear - 1`
-- `SETBIT` / `GETBIT` / `BITCOUNT`；连续天数在当年范围内逐位回溯
-- TTL 400 天，跨年后自然过期；时区固定 `Asia/Shanghai`
-
 **压测验收记录（2026-11-06）**
 
 完整数据与复现命令见 [perf/RESULTS.md](perf/RESULTS.md)。环境：Apple M3 / 16 GB，单实例 Spring Boot，MySQL + Redis 在 Docker。
 
-- 同一接口开/关缓存（`--libhunt.cache.enabled=false` 作为干净对照，各 3 轮取中位数）：
-  11,507 → 3,027 req/s，P95 7 → 43 ms，约 3.8 倍
-- JMeter 120 线程混合压测：62,000 次请求、7.1 秒、0 错误、整体 8,712 req/s
-- 压测期间 Redis `keyspace_misses` 增量 0，MySQL `Com_select` +22,001（来自排行榜补昵称 1.8 万 + 判题约 3 千，关卡详情一次都没回源）
+- 关卡详情（当前代码，每次回源 MySQL）：3,027 req/s，P95 43 ms
+- JMeter 120 线程混合压测（历史数据，当时仍有关卡缓存）：62,000 次请求、7.1 秒、0 错误、整体 8,712 req/s
 - 判题接口 20 线程抢同一批对局：P95 26 ms、0 错误，行锁没有把连接池拖垮
+- 后来为降低复杂度移除了关卡缓存：数据量只有 12 关 × 3 语言，读 MySQL 的延迟已经足够低
 
 **压测中发现的问题**
-- Redisson 默认在 `Redisson.create()` 时连接 Redis，Redis 没起来应用会**启动失败**——已改为 `setLazyInitialization(true)`，先启动、锁和限流在运行时 fail-open
+- Redisson 默认在 `Redisson.create()` 时连接 Redis，Redis 没起来应用会**启动失败**——已改为 `setLazyInitialization(true)`，先启动、限流在运行时 fail-open
 - Redis 完全不可达时接口仍返回 200，但每个请求要等连接失败，延迟劣化到秒级；缺熔断，已记为待办
 - 压测必须在 JVM 预热后对比：冷启动第一次测得的吞吐会低一个数量级，直接比较会得出错误结论
 
 **测试验收记录（2026-11-06）**
 
-`cd server && ./mvnw test` → `Tests run: 49, Failures: 0, Errors: 0`，整套约 20 秒（首次需拉镜像）。
+`cd server && ./mvnw test` → `Tests run: 54, Failures: 0, Errors: 0`，整套约 20 秒（首次需拉镜像）。
 
 | 测试类 | 用例数 | 覆盖 |
 | --- | --- | --- |
-| `GameRulesTest` | 3 | 计分规则 |
-| `GameRunFlowIntegrationTest` | 14 | 开局 / 判题 / 扫码 / 结算 / 幂等 / 跳关 / 放弃 / 通关 |
-| `GameRunConcurrencyIntegrationTest` | 4 | 10 并发答题、并发答题+扫码、并发开局、并发幂等键 |
+| `GameRulesTest` | 5 | 计分规则 |
+| `GameRunFlowIntegrationTest` | 16 | 开局 / 判题 / 扫码 / 结算 / 幂等 / 跳关 / 放弃 / 通关 |
+| `GameRunConcurrencyIntegrationTest` | 5 | 10 并发答题、并发答题+扫码、并发开局、并发幂等键 |
 | `LeaderboardIntegrationTest` | 4 | Redis 排序、每人最好一局、预热、rebuild |
 | `LeaderboardFallbackTest` | 2 | Redis 故障回落 MySQL、写失败不拖垮通关 |
 | `ApiSecurityIntegrationTest` | 8 | 401/403、登录、禁用账号、答案不泄露 |
-| `LevelCacheIntegrationTest` | 4 | 详情/列表缓存、空值标记、按语言分键 |
-| `LevelCacheFallbackTest` | 2 | Redis 故障降级回源 |
-| `LevelCacheDisabledTest` | 1 | 缓存开关关闭后只读 MySQL、不写 Redis |
+| `StudentLoginIntegrationTest` | 5 | 学号直登自动建号、复用已有账号、管理员/禁用账号拦截 |
+| `QrTokenServiceTest` | 6 | 二维码签名：有效 / 过期 / 关卡不符 / 篡改 / 密钥错误 / 大小写与空白 |
 | `LoginRateLimitIntegrationTest` | 3 | IP 限流 429、账号级限流 |
-| `CheckinIntegrationTest` | 4 | 打卡幂等、连续天数、BitMap 存储占用 |
 
 **踩坑记录**
 - 不能用 H2 代替 MySQL：`SELECT … FOR UPDATE` 的锁语义、窗口函数、JSON 列都是 MySQL 特有行为
@@ -270,6 +264,7 @@ player ──< game_run ──< level_attempt
 - [x] 改造前后对比：[docs/BEFORE-AFTER.md](docs/BEFORE-AFTER.md)
 - [x] 每个技术点脱稿 3 分钟：[docs/INTERVIEW.md](docs/INTERVIEW.md)
 - [x] 教学与求职指南（简历写法 / 全链路走读 / 面试速查 / 自测清单）：[docs/PROJECT-GUIDE.md](docs/PROJECT-GUIDE.md)
+- [x] IntelliJ IDEA 开发指南（导入、运行配置、调试、测试、排错）：[docs/IDEA.md](docs/IDEA.md)
 
 ## 明确不做
 

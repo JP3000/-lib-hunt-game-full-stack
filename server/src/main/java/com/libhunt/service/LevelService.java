@@ -34,18 +34,13 @@ public class LevelService {
     private final LevelOptionMapper levelOptionMapper;
     private final LevelItemMapper levelItemMapper;
     private final ItemMapper itemMapper;
-    private final LevelCache levelCache;
 
     public List<LevelSummaryVO> list(String locale) {
-        String loc = LocaleSupport.normalize(locale);
-        return levelCache.list("libhunt:level:list:" + loc, () -> loadList(loc));
+        return loadList(LocaleSupport.normalize(locale));
     }
 
     public LevelDetailVO detail(int levelNo, String locale) {
-        String loc = LocaleSupport.normalize(locale);
-        LevelDetailVO detail = levelCache.detail(
-                "libhunt:level:detail:" + loc + ":" + levelNo,
-                () -> loadDetail(levelNo, loc));
+        LevelDetailVO detail = loadDetail(levelNo, LocaleSupport.normalize(locale));
         if (detail == null) {
             throw new BusinessException("关卡不存在：" + levelNo);
         }
@@ -92,7 +87,7 @@ public class LevelService {
     }
 
     /**
-     * 只查库、不抛异常：返回 null 表示关卡不存在，由 {@link LevelCache} 把它缓存成空值。
+     * 只查库、不抛异常：返回 null 表示关卡不存在。
      */
     private LevelDetailVO loadDetail(int levelNo, String loc) {
         Level level = levelMapper.selectOne(

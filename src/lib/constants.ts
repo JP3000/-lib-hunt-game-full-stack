@@ -3,13 +3,13 @@ export const CACHE_BUSTER = "20250710";
 
 export const TOTAL_LEVELS = 12;
 /**
- * 12 关满分：每关首答正确 100 分（服务端 GameRules.LEVEL_BASE_SCORE × 12）。
+ * 12 关满分：每关 20 分（服务端 GameRules.LEVEL_BASE_SCORE × 12）。
+ * 多选题少选只拿部分分，所以实际得分通常低于这个上限。
  * 用于管理端看板的「正确率」换算。
  */
-export const TOTAL_MAX_SCORE = 1200;
+export const TOTAL_MAX_SCORE = 240;
 
 export const STUDENT_ID_REGEX = /^[A-Za-z]{2}\d{6}$/;
-export const FAST_PASS_STUDENT_ID = "ab999999";
 
 /** 職員用戶名長度限制 */
 export const STAFF_USERNAME_MIN_LENGTH = 5;

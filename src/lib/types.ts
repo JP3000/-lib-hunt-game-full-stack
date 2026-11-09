@@ -90,8 +90,10 @@ export type Settlement = {
 };
 
 export type AnswerResult = {
+  /** 本次提交是否通过本题（少选拿到部分分也算通过） */
   correct: boolean;
   attempts: number;
+  /** 本题得分：全对 20，少选按正确选项比例给分，错选 0 */
   score: number;
   questionPassed: boolean;
   qrPassed: boolean;
@@ -119,11 +121,4 @@ export type AdminStats = {
   totalCompletions: number;
   avgScore: number;
   avgDuration: number;
-};
-
-/** GET/POST /api/checkin —— Redis BitMap 记录的每日到馆 */
-export type CheckinStatus = {
-  todayChecked: boolean;
-  totalDaysThisYear: number;
-  streakDays: number;
 };

@@ -36,24 +36,23 @@
 
 每关有两道互相独立的验证：
 
-1. **答题**——提交选项，服务端判对错；答错可重来，每次错误扣 20 分
-2. **现场扫码**——扫描张贴在馆内的二维码（或手动输入密钥），服务端比对
+1. **答题**——提交选项，服务端判对错；答错不提示、可重来，也不倒扣分数
+2. **现场扫码**——扫描张贴在馆内的二维码（或手动输入内容），服务端校验签名与有效期
 
 两关都通过才会结算：加分、发道具、解锁下一关。**扫码保证玩家真的走到了现场**，这是游戏的核心设计。
 
-计分：首答正确 100 分，每错一次减 20 分，最低 20 分；12 关满分 1200 分。同分时用时短的排名靠前。
+计分：每关 20 分，多选按正确选项平分。少选得部分分（如 2 个正确选项只选 1 个得 10 分），选到错误选项则本题 0 分、不通过；因此不是人人都能拿满分。12 关满分 240 分，同分时用时短的排名靠前。
 
 ## 功能特性
 
 - 🗺️ **12 关卡地图** — 藏宝图风格的关卡选择界面，按服务端进度解锁
-- 📱 **二维码实地验证** — 调用摄像头扫码，附手动输入兜底；扫码与答题顺序不限
-- 🔐 **账号体系** — JWT 登录 + BCrypt 密码；管理员可创建/禁用账号、重置密码
+- 📱 **二维码实地验证** — 服务端签发带过期时间的 HMAC 二维码，调用摄像头扫码，附手动输入兜底；扫码与答题顺序不限
+- 🔐 **账号体系** — 学生学号直登（首次自动建号），管理员走 JWT + BCrypt 密码；管理员可创建/禁用账号、重置密码
 - 🎬 **剧情视频** — 5 支 AI 生成的剧情动画，嵌入关键转折关卡
 - 🌏 **三语支持** — 繁体中文 / 简体中文 / English（数据库 JSON 列存储）
 - 🎒 **道具收集** — 每关解锁剧情道具卡，可查看大图与说明
 - 🏆 **排行榜与数据看板** — Redis 排行榜、通关统计、平均分/平均耗时
-- 📅 **每日到馆打卡** — Redis BitMap 存「一年中哪几天来过」，一天一位，全年只占约 46 字节
-- ⚡ **高并发防护** — 关卡内容缓存（穿透 / 击穿 / 雪崩三重保护）、登录限流、Redis 故障自动回源 MySQL
+- ⚡ **高并发防护** — 服务端判题 + 行锁幂等、登录限流、Redis 故障自动回源 MySQL
 
 ## 架构
 
@@ -69,8 +68,8 @@
               Spring Boot 3（:8080）       ← JWT、判题、结算、排行
                     │            │
                     ▼            ▼
-          MySQL 8.4（:3307）   Redis 7（:6380）
-          内容/对局/成绩     排行榜 ZSET / 关卡缓存 / BitMap 打卡 / 限流
+          MySQL 8.4（:3306）   Redis 7（:6379）
+          内容/对局/成绩     排行榜 ZSET / 限流
 ```
 
 浏览器永远只和 Next.js 通信，**没有跨域、没有前端硬编码的后端地址**。部署只是把这两个进程放到服务器上、用 Nginx 做同样的 `/api` 分流，不影响项目本身的全栈性质。
@@ -85,8 +84,8 @@
 | 扫码 | [html5-qrcode](https://github.com/mebjas/html5-qrcode) |
 | 后端 | Java 21、[Spring Boot 3.5](https://spring.io/projects/spring-boot)、[MyBatis-Plus 3.5](https://baomidou.com) |
 | 数据库 | MySQL 8.4 + Flyway 迁移 |
-| 缓存 | Redis 7（排行榜 ZSET、关卡内容缓存、BitMap 打卡、限流，AOF 持久化） |
-| 分布式锁 / 限流 | [Redisson 3.52](https://redisson.org)（`RLock`、`RRateLimiter`） |
+| 排行榜 / 限流 | Redis 7（ZSET + RRateLimiter，AOF 持久化） |
+| 分布式限流 | [Redisson 3.52](https://redisson.org)（`RRateLimiter`） |
 | 鉴权 | JWT（jjwt 0.12）+ 拦截器 + BCrypt（spring-security-crypto） |
 | 接口文档 | springdoc-openapi（Swagger UI） |
 
@@ -108,7 +107,7 @@ docker compose up -d
 
 会在宿主机映射 `3307`（MySQL）和 `6380`（Redis）——故意避开常见的 `3306` / `6379`，避免与本机已有服务冲突。数据落在 Docker volume 中，重启不丢。
 
-> Docker 在这里只负责中间件。如果本机已经装了 MySQL 8 / Redis 7，跳过这一步，把 `application.yml` 里的端口改成 `3306` / `6379`（或用 `SPRING_DATASOURCE_URL`、`SPRING_DATA_REDIS_PORT` 覆盖）即可，后端代码不需要改。
+> 后端 `application.yml` 默认连本机 `3306` / `6379`。如果用的是上面的 Docker 中间件，启动后端时要加 `SPRING_PROFILES_ACTIVE=docker`（对应 `application-docker.yml` 里的 3307/6380）。如果本机已经装了 MySQL 8 / Redis 7，什么都不用改，直接启动后端即可。完整步骤见 [docs/IDEA.md](docs/IDEA.md) 第 12.9 节。
 
 ### 2. 启动后端
 
@@ -135,14 +134,23 @@ npm run dev
 
 ### 4. 账号
 
-- **管理员**：`admin / Admin@123456`（本地默认值）
-- **学生**：由管理员创建。打开 Swagger UI → `POST /api/auth/login` 拿 token → 右上角 **Authorize** 填入 → 调 `POST /api/admin/players`：
+- **学生**：打开前端 `/login`，直接输入学号（2 个字母 + 6 个数字，如 `ab565666`）即可开始；第一次登录会自动创建学生账号。
+- **管理员**：在 `/login` 切到「管理员」，用 `admin / Admin@123456` 登录（本地默认值），再访问 `/admin` 查看数据看板。
+- 管理员也可以在 Swagger UI 里先 `POST /api/auth/login` 拿 token，再调 `POST /api/admin/players` 批量导入学生：
 
 ```json
 { "studentNo": "ab123456", "nickname": "测试学生", "initialPassword": "12345678", "role": "STUDENT" }
 ```
 
-也可以直接用前端 `/login` 登录管理员账号，再访问 `/admin` 查看数据看板。
+### 5. 演示数据（可选）
+
+后端启动后执行：
+
+```bash
+./scripts/seed-demo.sh
+```
+
+脚本会通过真实接口创建 `ab565601`–`ab565610`（全部符合「2 个字母 + 6 个数字」的学号规则，直接输学号即可登录），每人一局通关记录，并额外准备进行中/已放弃的对局，让排行榜、管理端和地图进度都有内容。脚本可重复执行；重复执行会新增通关历史。
 
 ## 项目结构
 
@@ -151,7 +159,7 @@ src/                              # 前端
 ├── app/
 │   ├── (default)/page.tsx        # 序幕页（开场动画 + 语言切换）
 │   ├── [lang]/                   # 多语言路由：zh-Hant | zh-Hans | en
-│   │   ├── login/                #   登录（账号 + 密码）
+│   │   ├── login/                #   登录（学生学号直登 / 管理员账号密码）
 │   │   ├── map/                  #   寻宝地图
 │   │   ├── levels/01 … 12/       #   12 个关卡页（薄封装）
 │   │   ├── result/               #   通关结算
@@ -194,7 +202,8 @@ docker-compose.yml                # 本地 MySQL + Redis
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/api/auth/login` | 公开 | 登录，返回 JWT + 玩家信息 |
+| POST | `/api/auth/student-login` | 公开 | 学生学号直登；首次自动建号，返回 JWT + 玩家信息 |
+| POST | `/api/auth/login` | 公开 | 账号密码登录（管理员），返回 JWT + 玩家信息 |
 | GET | `/api/auth/me` | 登录 | 当前登录玩家信息 |
 | GET | `/api/levels?locale=` | 公开 | 关卡列表（标题 + 道具） |
 | GET | `/api/levels/{n}?locale=` | 公开 | 关卡详情（**不含答案**） |
@@ -203,9 +212,8 @@ docker-compose.yml                # 本地 MySQL + Redis
 | GET | `/api/runs/current` | 登录 | 当前/最近一局，用于刷新恢复 |
 | POST | `/api/runs/{id}/abandon` | 登录 | 放弃本局（重新开始） |
 | POST | `/api/runs/{id}/levels/{n}/answer` | 登录 | 提交选项，服务端判题 |
-| POST | `/api/runs/{id}/levels/{n}/qr` | 登录 | 提交现场二维码内容 |
-| GET | `/api/checkin` | 登录 | 今日是否打卡、今年累计天数、连续天数 |
-| POST | `/api/checkin` | 登录 | 今日打卡（幂等） |
+| POST | `/api/runs/{id}/levels/{n}/qr` | 登录 | 提交现场二维码内容（校验签名与有效期） |
+| GET | `/api/admin/levels/{n}/qr?ttlSeconds=` | ADMIN | 签发带过期时间的关卡二维码 |
 | GET | `/api/admin/stats` | ADMIN | 玩家数、通关数、平均分/耗时 |
 | GET/POST | `/api/admin/players` | ADMIN | 账号分页 / 创建 |
 | PATCH | `/api/admin/players/{id}/status` | ADMIN | 启用 / 禁用 |
@@ -216,7 +224,7 @@ docker-compose.yml                # 本地 MySQL + Redis
 
 ## 服务端权威是怎么保证的
 
-- **答案不下发**：`level.qr_answer`、`level.correct_option_keys` 只供服务端判题；对外 VO 里没有这两个字段（`level-page.tsx` 曾经用过的 `correctOptionIds` 在类型层面已删除）
+- **答案不下发**：`level.correct_option_keys` 只供服务端判题，`level.qr_answer` 只作为二维码签名密钥；对外 VO 里没有这两个字段（`level-page.tsx` 曾经用过的 `correctOptionIds` 在类型层面已删除）
 - **顺序由服务端管**：`game_run.last_level_no` 是唯一权威，提交非当前关卡直接拒绝
 - **一关只结算一次**：`level_attempt.settled` 标记 + `UNIQUE(run_id, level_no)` 唯一索引
 - **并发安全**：答题/扫码时对 `game_run` 行 `SELECT … FOR UPDATE`，同一局的请求串行执行；同一玩家并发开局用 `player` 行锁
@@ -227,7 +235,7 @@ docker-compose.yml                # 本地 MySQL + Redis
 
 > **关卡内容的事实来源是 `src/data/levels.ts`；数据库里的数据由脚本生成，不要手改。**
 
-内容源文件仍是 [src/data/levels.ts](src/data/levels.ts)（三语、答案、二维码、道具都在一个文件里），脚本把它导出为 Flyway SQL：
+内容源文件仍是 [src/data/levels.ts](src/data/levels.ts)（三语、答案、二维码密钥、道具都在一个文件里），脚本把它导出为 Flyway SQL：
 
 ```bash
 # 默认输出 V3__seed_levels.sql（全新环境的完整种子）
@@ -237,7 +245,9 @@ node --experimental-strip-types scripts/export-levels.mjs
 node --experimental-strip-types scripts/export-levels.mjs V5__update_levels.sql
 ```
 
-脚本会校验：三种语言的关卡数一致、选项集合一致、语言无关字段（答案、二维码、视频地址）三语一致，不一致直接报错。
+脚本会校验：三种语言的关卡数一致、选项集合一致、语言无关字段（答案、二维码密钥、视频地址）三语一致，不一致直接报错。
+
+> `qrAnswer` 现在作为**签发二维码的关卡密钥**使用，不是张贴在现场的明文。现场二维码通过 `GET /api/admin/levels/{n}/qr` 生成，内容包含关卡号、过期时间和 HMAC 签名；单独泄露 `qr_answer` 也无法伪造二维码。
 
 **⚠️ 两个限制**
 
@@ -264,9 +274,10 @@ node --experimental-strip-types scripts/export-levels.mjs V5__update_levels.sql
 | `JWT_SECRET` | 开发占位值 | JWT 签名密钥，**生产环境必须改为 ≥ 32 字节随机串** |
 | `ADMIN_STUDENT_NO` | `admin` | 首次启动创建的管理员账号 |
 | `ADMIN_INITIAL_PASSWORD` | `Admin@123456` | 首次启动创建的管理员密码 |
-| `SPRING_DATASOURCE_URL` / `..._USERNAME` / `..._PASSWORD` | `localhost:3307/libhunt`、root/root | Spring Boot 环境变量覆盖 |
-| `SPRING_DATA_REDIS_HOST` / `..._PORT` | `localhost:6380` | 同上 |
-| `LIBHUNT_CACHE_ENABLED` | `true` | 关卡内容缓存总开关；`false` 时每次读都回源 MySQL（排查 / 压测基线用） |
+| `SPRING_PROFILES_ACTIVE` | 空 | 设为 `docker` 时连 Docker 的 3307/6380 |
+| `SPRING_DATASOURCE_URL` / `..._USERNAME` / `..._PASSWORD` | `localhost:3306/libhunt`、root/root | Spring Boot 环境变量覆盖 |
+| `SPRING_DATA_REDIS_HOST` / `..._PORT` | `localhost:6379` | 同上 |
+| `LIBHUNT_QR_SECRET` | 开发占位值 | 现场二维码 HMAC 密钥，**生产环境必须改为随机串** |
 
 **前端**：
 
@@ -290,7 +301,7 @@ node --experimental-strip-types scripts/export-levels.mjs V5__update_levels.sql
 
 ## 测试
 
-后端有 49 个自动化用例，跑在真实的 MySQL 8.4 + Redis 7 容器上（Testcontainers），不依赖本地已启动的 docker compose：
+后端有 54 个自动化用例，跑在真实的 MySQL 8.4 + Redis 7 容器上（Testcontainers），不依赖本地已启动的 docker compose：
 
 ```bash
 cd server && ./mvnw test
@@ -298,17 +309,15 @@ cd server && ./mvnw test
 
 | 测试类 | 覆盖内容 |
 | --- | --- |
-| `GameRulesTest` | 计分规则：首答 100、每错扣 20、最低 20 |
-| `GameRunFlowIntegrationTest` | 开局 / 判题 / 扫码 / 结算 / 重复提交幂等 / 跳关拦截 / 放弃重开 / 12 关通关 |
+| `GameRulesTest` | 计分规则：每关 20、多选少选得部分分、错选不得分 |
+| `GameRunFlowIntegrationTest` | 开局 / 判题 / 部分分 / 错选不得分 / 扫码 / 结算 / 重复提交幂等 / 跳关拦截 / 放弃重开 / 12 关通关 |
 | `GameRunConcurrencyIntegrationTest` | 10 个并发请求：只落一条过关记录、只结算一次、只开一局 |
 | `LeaderboardIntegrationTest` | 复合排序、每人取最好一局、Redis 预热与全量重建 |
 | `LeaderboardFallbackTest` | Redis 不可用时回落 MySQL；写排行榜失败不影响通关 |
 | `ApiSecurityIntegrationTest` | 401 / 403 统一 JSON、BCrypt 登录、禁用账号、关卡接口不泄题 |
-| `LevelCacheIntegrationTest` | 关卡详情/列表缓存命中、缓存空值标记、按语言分键 |
-| `LevelCacheFallbackTest` | Redis 故障时缓存自动降级回源 |
-| `LevelCacheDisabledTest` | 缓存开关关闭后只读 MySQL、不写 Redis |
+| `StudentLoginIntegrationTest` | 学号直登自动建号、复用已有账号、管理员/禁用账号拦截、非法学号校验 |
+| `QrTokenServiceTest` | 二维码签名校验：有效 / 过期 / 关卡不符 / 篡改 / 密钥错误 / 大小写与空白 |
 | `LoginRateLimitIntegrationTest` | 同 IP 限流 429、账号级限流跨 IP 生效 |
-| `CheckinIntegrationTest` | 打卡幂等、连续天数、BitMap 一天一位的存储占用 |
 
 为什么不用 H2：判题依赖 `SELECT ... FOR UPDATE`，排行榜依赖窗口函数，迁移脚本用到 JSON 列——这些都是 MySQL 特有行为，换成 H2 既测不出真实问题，也测不出并发。
 
@@ -318,10 +327,11 @@ JMeter 测试计划与结果在 [perf/](perf/) 目录，完整报告见 [perf/RE
 
 | 场景 | 结果 |
 | --- | --- |
-| 关卡详情，缓存开 / 关 | 11,507 → 3,027 req/s（P95 7 → 43 ms），约 **3.8 倍** |
-| 120 线程混合压测（关卡 / 排行榜 / 打卡 / 判题） | 62,000 次请求，0 错误，整体 **8,712 req/s** |
+| 关卡详情（当前代码：每次回源 MySQL） | 3,027 req/s，P95 43 ms |
+| 120 线程混合压测（关卡 / 排行榜 / 判题，历史数据） | 62,000 次请求，0 错误，整体 **8,712 req/s** |
 | 判题接口（20 线程并发抢同一批对局） | P95 26 ms，0 错误 |
-| 压测期间 Redis | `keyspace_misses` 增量 **0**——50,000 次关卡详情没有一次回源 |
+
+> 2026-11-06 的压测是在关卡缓存仍存在时做的；之后为降低复杂度移除了缓存（12 关 × 3 语言，缓存收益不值得维护成本）。当前关卡详情走 MySQL，对应上表的 3,027 req/s。完整说明见 [perf/RESULTS.md](perf/RESULTS.md)。
 
 ```bash
 cd perf && jmeter -n -t libhunt-load-test.jmx -l results/results.jtl -e -o results/html
@@ -366,9 +376,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 ## 已知限制
 
 - **关卡内容仍需改代码**：内容源文件是 TS，改完要生成迁移并重启后端；没有关卡 CMS
-- **二维码明文比对**：没做 HMAC 防伪，扫码内容泄露后可以被复制
+- **二维码在有效期内仍可被转发**：已用 HMAC + 过期时间防伪造，但签名内容本身可复制；要更强需要绑定玩家或改成一次性 token
 - **禁用账号不能立即踢下线**：JWT 无状态，禁用后已签发的 token 在有效期（12 小时）内仍可用；要立即生效需要加 Redis 黑名单
-- **Redis 故障时没有熔断**：接口仍能 fail-open 回源 MySQL、不会报错，但每个请求要等 Redis 连接失败，延迟会劣化到秒级
+- **Redis 故障时没有熔断**：排行榜回源 MySQL、限流放行，接口不会报错，但每个请求要等 Redis 连接失败，延迟会劣化到秒级
 - **压测只在单机跑过**：JMeter 数据见 [perf/RESULTS.md](perf/RESULTS.md)，没有多机 / 云环境数据
 - **排行榜读路径仍回源 MySQL**：Redis 只负责排序，昵称与分数要批量补查；压测里 9,000 次读取产生 1.8 万次 SELECT，量级不大但可以进一步缓存整张榜
 - **管理端只有基础能力**：账号管理、统计、重建排行榜；没有批量导入（Excel）与可视化图表
@@ -379,6 +389,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
 | --- | --- |
 | [PLAN.md](PLAN.md) | 改造计划、阶段进度、验收记录与踩坑 |
 | [docs/PROJECT-GUIDE.md](docs/PROJECT-GUIDE.md) | 项目教学与面试指南：自我介绍、简历写法、全链路走读、面试题速查 |
+| [docs/IDEA.md](docs/IDEA.md) | 用 IntelliJ IDEA 打开、运行、调试后端与跑测试 |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | 表结构、索引、Redis 数据结构与设计取舍 |
 | [docs/BEFORE-AFTER.md](docs/BEFORE-AFTER.md) | 纯前端 → 全栈的改造前后对比 |
 | [docs/INTERVIEW.md](docs/INTERVIEW.md) | 每个技术点的 3 分钟讲稿与追问 |

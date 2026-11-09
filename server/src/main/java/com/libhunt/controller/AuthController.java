@@ -4,6 +4,7 @@ import com.libhunt.common.Result;
 import com.libhunt.dto.LoginRequest;
 import com.libhunt.dto.LoginVO;
 import com.libhunt.dto.PlayerVO;
+import com.libhunt.dto.StudentLoginRequest;
 import com.libhunt.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,6 +28,12 @@ public class AuthController {
     @PostMapping("/login")
     public Result<LoginVO> login(@Valid @RequestBody LoginRequest request) {
         return Result.ok(authService.login(request));
+    }
+
+    @Operation(summary = "学生学号直登", description = "只需学号；首次登录自动创建学生账号。管理员仍走 /login")
+    @PostMapping("/student-login")
+    public Result<LoginVO> studentLogin(@Valid @RequestBody StudentLoginRequest request) {
+        return Result.ok(authService.studentLogin(request));
     }
 
     @Operation(summary = "当前账号", description = "需要 Authorization: Bearer <token>")

@@ -19,7 +19,7 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("图书馆寻宝游戏 API")
                         .version("v1")
-                        .description("Lib Hunt Game 后端接口。除 /api/auth/login 外均需 Bearer Token。"))
+                        .description("Lib Hunt Game 后端接口。除 /api/auth/login、/api/auth/student-login 外均需 Bearer Token。"))
                 .components(new Components().addSecuritySchemes(BEARER,
                         new SecurityScheme()
                                 .type(SecurityScheme.Type.HTTP)

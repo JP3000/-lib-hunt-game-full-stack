@@ -39,7 +39,7 @@ Spring Boot 3（:8080）       JWT、判题、计分、结算、限流
   │            │
   ▼            ▼
 MySQL 8.4   Redis 7
-内容/对局/成绩   排行榜 / 缓存 / BitMap / 限流
+内容/对局/成绩   排行榜 / 限流
 ```
 
 浏览器依然只和 Next.js 通信，跨域、鉴权头、错误格式都在一层里处理；后端可以从任何客户端调用，不依赖前端框架。
@@ -50,11 +50,12 @@ MySQL 8.4   Redis 7
 | --- | --- | --- |
 | 题目与答案 | JS bundle | MySQL；对外 VO 不含 `correct_option_keys` / `qr_answer` |
 | 判题 | 浏览器 | 服务端 `GameRunService`，前端只提交选了哪些 key |
-| 计分 | 浏览器 | 服务端 `GameRules`：首答 100，每错 -20，最低 20 |
+| 计分 | 浏览器 | 服务端 `GameRules`：每关 20，多选少选得部分分、错选不得分 |
 | 进度 | localStorage | `game_run.last_level_no`，`GET /api/runs/current` 恢复 |
 | 身份 | 无 | JWT + BCrypt；管理员创建 / 禁用 / 重置密码 |
 | 防跳关 | 无 | 提交非当前关卡直接拒绝 |
 | 防重复结算 | 无 | `level_attempt.settled` + `UNIQUE(run_id, level_no)` |
+| 二维码 | 明文常量，可复制 | HMAC 签名 + 过期时间，服务端签发 |
 | 防连点 / 并发 | 无 | `SELECT ... FOR UPDATE` 行锁 + 唯一索引兜底 |
 | 排行榜 | JSON 文件 | Redis ZSET 复合排序，MySQL 兜底与重建 |
 | 统计 | 无 | 管理端：玩家数、通关数、平均分、平均耗时 |
@@ -83,12 +84,13 @@ MySQL 8.4   Redis 7
 
 ## 改造带来的数字
 
-- 后端 49 个自动化用例（Testcontainers 起真实 MySQL + Redis），覆盖判题、幂等、并发、缓存、限流、打卡、RBAC
-- 压测：关卡详情缓存开启后 11,507 req/s，关闭后 3,027 req/s（同一接口对照），详见 [perf/RESULTS.md](../perf/RESULTS.md)
+- 后端 54 个自动化用例（Testcontainers 起真实 MySQL + Redis），覆盖判题、幂等、并发、二维码签名、限流、RBAC
+- 压测：关卡详情每次回源 MySQL 时 3,027 req/s、P95 43 ms，详见 [perf/RESULTS.md](../perf/RESULTS.md)
+- 现场二维码用 HMAC 签名 + 过期时间，服务端签发，客户端拿不到密钥
 - 接口一览、架构图、环境变量都在 [README.md](../README.md)
 
 ## 如果重来一次
 
 - 先写 `Result` / 异常 / 鉴权三件套，再写业务——后面每个接口都少写一遍样板
 - 测试用例和功能同步写。改造中途补测试时，很多并发问题已经写进代码，只能靠回读来确认
-- 压测要在 JVM 预热后做。第一次测出 61 req/s 差点以为缓存写坏了，其实是冷启动 + Redis 故障重试叠加
+- 压测要在 JVM 预热后做。第一次测出 61 req/s 差点以为代码写坏了，其实是冷启动 + Redis 故障重试叠加

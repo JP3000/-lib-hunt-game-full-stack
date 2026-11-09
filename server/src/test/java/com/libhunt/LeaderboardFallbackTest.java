@@ -42,7 +42,7 @@ class LeaderboardFallbackTest {
         row.setRunId(42L);
         row.setPlayerId(7L);
         row.setNickname("小明");
-        row.setTotalScore(1200);
+        row.setTotalScore(240);
         row.setDurationSeconds(300);
         when(gameRunMapper.selectTopBestPerPlayer(10)).thenReturn(List.of(row));
 
@@ -51,7 +51,7 @@ class LeaderboardFallbackTest {
         assertThat(board).hasSize(1);
         assertThat(board.get(0).rank()).isEqualTo(1);
         assertThat(board.get(0).nickname()).isEqualTo("小明");
-        assertThat(board.get(0).totalScore()).isEqualTo(1200);
+        assertThat(board.get(0).totalScore()).isEqualTo(240);
     }
 
     @Test
@@ -61,7 +61,7 @@ class LeaderboardFallbackTest {
 
         GameRun run = new GameRun();
         run.setId(1L);
-        run.setTotalScore(1200);
+        run.setTotalScore(240);
         run.setDurationSeconds(600);
 
         assertThatCode(() -> service.recordCompletedRun(run)).doesNotThrowAnyException();

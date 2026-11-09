@@ -1,13 +1,12 @@
 # 压测
 
-用 JMeter 对四个典型路径做对比，验证「缓存 + Redis + 行锁」在并发下的表现：
+用 JMeter 对三个典型路径做对比，验证「MySQL 读取 + Redis 排行榜 + 行锁」在并发下的表现：
 
 | 线程组 | 请求 | 路径特征 |
 | --- | --- | --- |
-| 1-关卡详情（缓存） | `GET /api/levels/{1..12}?locale=zh-Hant` | 命中 Redis，正常不碰 MySQL |
+| 1-关卡详情（MySQL） | `GET /api/levels/{1..12}?locale=zh-Hant` | 每次查询 MySQL |
 | 2-排行榜（ZSET） | `GET /api/leaderboard?limit=20` | Redis ZSET 读取，失败才回落 MySQL |
-| 3-打卡（BitMap） | `POST` + `GET /api/checkin` | 一天一位的写读，幂等 |
-| 4-判题（MySQL 行锁） | `POST /api/runs/{id}/levels/1/answer` | `SELECT ... FOR UPDATE` + 写 `level_attempt` |
+| 3-判题（MySQL 行锁） | `POST /api/runs/{id}/levels/1/answer` | `SELECT ... FOR UPDATE` + 写 `level_attempt` |
 
 ## 运行
 

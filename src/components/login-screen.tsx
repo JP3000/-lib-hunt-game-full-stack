@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CACHE_BUSTER } from "@/lib/constants";
+import { CACHE_BUSTER, STUDENT_ID_REGEX } from "@/lib/constants";
 import { useLocale } from "@/hooks/use-locale";
 import { LOCALES, replaceLocaleInPathname, withLocalePrefix } from "@/lib/i18n";
 import { getTranslations } from "@/lib/translations";
@@ -15,8 +15,10 @@ export function LoginScreen() {
   const t = getTranslations(locale);
   const hydrated = useGameStore((state) => state.hasHydrated);
   const player = useGameStore((state) => state.player);
+  const role = useGameStore((state) => state.role);
   const login = useGameStore((state) => state.login);
 
+  const [mode, setMode] = useState<"student" | "admin">("student");
   const [studentNo, setStudentNo] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,26 +26,37 @@ export function LoginScreen() {
 
   useEffect(() => {
     if (hydrated && player) {
-      router.replace(withLocalePrefix("/map", locale));
+      router.replace(role === "staff" ? "/admin" : withLocalePrefix("/map", locale));
     }
-  }, [hydrated, player, router, locale]);
+  }, [hydrated, player, role, router, locale]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const account = studentNo.trim();
-    if (!account || !password) {
+    const isAdminLogin = mode === "admin";
+    if (!account) {
       setError(t.login.invalidStudentId);
+      return;
+    }
+    // 学生学号规则：2 个字母 + 6 个数字（管理员账号不受此限制）
+    if (!isAdminLogin && !STUDENT_ID_REGEX.test(account)) {
+      setError(t.login.invalidStudentId);
+      return;
+    }
+    if (isAdminLogin && !password) {
+      setError(t.login.passwordRequired);
       return;
     }
 
     setSubmitting(true);
     setError("");
     try {
-      await login(account, password);
-      router.push(withLocalePrefix("/map", locale));
+      await login(account, isAdminLogin ? password : undefined);
+      const nextRole = useGameStore.getState().role;
+      router.push(nextRole === "staff" ? "/admin" : withLocalePrefix("/map", locale));
     } catch (err) {
-      // 后端对「账号不存在」和「密码错误」返回同一句提示
+      // 管理员登录失败时后端统一提示「账号或密码错误」
       setError(err instanceof Error ? err.message : t.login.invalidStudentId);
     } finally {
       setSubmitting(false);
@@ -97,8 +110,28 @@ export function LoginScreen() {
         </div>
         <h1 className="treasure-title mt-2 text-3xl md:text-4xl">{t.login.headline}</h1>
         <p className="mt-3 whitespace-pre-line text-sm leading-6 text-[var(--ink-muted)]">
-          {t.login.description}
+          {mode === "student" ? t.login.description : t.login.adminDescription}
         </p>
+
+        <div className="mt-4 flex gap-1 rounded-full border border-[var(--border)] bg-black/15 p-1 text-xs">
+          {(["student", "admin"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setMode(value);
+                setError("");
+              }}
+              className={`flex-1 rounded-full px-3 py-1.5 transition ${
+                mode === value
+                  ? "bg-amber-500/25 text-amber-100"
+                  : "text-[var(--ink-muted)] hover:bg-black/20"
+              }`}
+            >
+              {value === "student" ? t.login.studentRole : t.login.adminRole}
+            </button>
+          ))}
+        </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-3">
           <label className="block text-sm text-[var(--ink-main)]">
@@ -115,20 +148,22 @@ export function LoginScreen() {
             />
           </label>
 
-          <label className="block text-sm text-[var(--ink-main)]">
-            {t.login.passwordLabel}
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => {
-                setPassword(event.target.value);
-                if (error) setError("");
-              }}
-              placeholder={t.login.passwordPlaceholder}
-              autoComplete="current-password"
-              className="mt-2 w-full rounded-xl border border-[var(--border)] bg-black/20 px-3 py-2 text-base outline-none placeholder:text-[var(--ink-muted)] focus:border-amber-400/70"
-            />
-          </label>
+          {mode === "admin" ? (
+            <label className="block text-sm text-[var(--ink-main)]">
+              {t.login.passwordLabel}
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  if (error) setError("");
+                }}
+                placeholder={t.login.passwordPlaceholder}
+                autoComplete="current-password"
+                className="mt-2 w-full rounded-xl border border-[var(--border)] bg-black/20 px-3 py-2 text-base outline-none placeholder:text-[var(--ink-muted)] focus:border-amber-400/70"
+              />
+            </label>
+          ) : null}
 
           <button
             type="submit"

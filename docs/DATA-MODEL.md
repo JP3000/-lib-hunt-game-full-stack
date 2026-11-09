@@ -76,7 +76,7 @@ level 1 ──< level_item >── item
 | 列 | 说明 |
 | --- | --- |
 | `run_id` + `level_no` | `UNIQUE`，一局一关只允许一条记录 |
-| `attempts` | 答题次数，用来扣分（首答 100，每错 -20，最低 20） |
+| `attempts` | 答题次数，用于分析题目难度（答错不扣分，也不提示） |
 | `question_passed` / `qr_passed` | 两道验证各自独立，顺序不限 |
 | `settled` | 本关是否已经结算过 |
 
@@ -95,20 +95,20 @@ Redis 不是真相来源，全部可以从 MySQL 重建（排行榜有 `POST /ap
 | key | 类型 | 用途 | 失效策略 |
 | --- | --- | --- | --- |
 | `libhunt:leaderboard:global` | ZSET | 排行榜，member = `runId` | 只保留前 1000 名 |
-| `libhunt:level:detail:{locale}:{level}` | String(JSON) | 关卡详情缓存 | 30 分钟 + 0–300 秒抖动 |
-| `libhunt:level:list:{locale}` | String(JSON) | 关卡列表缓存 | 5 分钟 + 0–60 秒抖动 |
-| `libhunt:level:*:lock` | Redisson RLock | 缓存重建锁 | 看门狗自动续期 |
-| `libhunt:checkin:{playerId}:{year}` | BitMap | 每日到馆，bit offset = `dayOfYear - 1` | 400 天 |
 | `libhunt:ratelimit:login:ip:{ip}` | RRateLimiter | 登录限流 | 1 分钟 10 次 |
 | `libhunt:ratelimit:login:account:{studentNo}` | RRateLimiter | 账号级限流 | 1 分钟 10 次 |
 
-排行榜的 ZSET score 用 `totalScore * 100000 + (100000 - durationSeconds)` 编码复合排序：分数高的在前，同分时用时短的在前。满分 1200，乘 10 万仍在 double 的精确整数范围内。
+排行榜的 ZSET score 用 `totalScore * 100000 + (100000 - durationSeconds)` 编码复合排序：分数高的在前，同分时用时短的在前。满分 240，乘 10 万仍在 double 的精确整数范围内。
 
 ## 设计决策
 
 ### 为什么多语言用 JSON 列
 
-语言固定三种、以读为主、没有"按语言过滤"的查询。拆成 `level_translation(locale, ...)` 子表会让每次读取多一次 join，收益只是"多一种语言时不用改表"——而多语言名单本身就是产品决策，不是运行时数据。JSON 列在这个场景下更简单，也方便整块进 Redis 缓存。
+语言固定三种、以读为主、没有"按语言过滤"的查询。拆成 `level_translation(locale, ...)` 子表会让每次读取多一次 join，收益只是"多一种语言时不用改表"——而多语言名单本身就是产品决策，不是运行时数据。JSON 列在这个场景下更简单，12 关数据量小，直接读 MySQL 已经足够快。
+
+### 二维码为什么用签名而不是存 token 表
+
+二维码内容 = 关卡号 + 过期时间 + HMAC 签名，服务端不需要存一张 token 表；校验是纯计算，过期和伪造都能挡住。签名密钥由服务端私钥与该关的 `qr_answer` 组合而成，两者都不出现在任何对外 DTO 里。管理员通过 `GET /api/admin/levels/{n}/qr` 签发后打印张贴。
 
 ### 为什么不建物理外键
 

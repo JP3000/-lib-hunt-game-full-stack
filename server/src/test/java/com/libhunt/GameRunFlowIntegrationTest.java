@@ -10,11 +10,13 @@ import com.libhunt.entity.Level;
 import com.libhunt.entity.Player;
 import com.libhunt.service.GameRunService;
 import com.libhunt.service.LeaderboardService;
+import com.libhunt.service.QrTokenService;
 import com.libhunt.support.IntegrationTestBase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,6 +35,9 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
 
     @Autowired
     private LeaderboardService leaderboardService;
+
+    @Autowired
+    private QrTokenService qrTokenService;
 
     @Test
     @DisplayName("开局创建一局进行中的游戏，从第 1 关开始")
@@ -76,28 +81,28 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
         RunStateVO run = gameRunService.start(player.getId(), null);
         Level level = level(1);
 
-        // 先错一次，验证扣分规则：100 - 20 = 80
+        // 先错一次，验证答错不扣分：答对仍得 20
         gameRunService.submitAnswer(player.getId(), run.runId(), 1, List.of("definitely-wrong"));
         AnswerResultVO answer = gameRunService.submitAnswer(
                 player.getId(), run.runId(), 1, level.getCorrectOptionKeys());
 
         assertThat(answer.correct()).isTrue();
         assertThat(answer.attempts()).isEqualTo(2);
-        assertThat(answer.score()).isEqualTo(80);
+        assertThat(answer.score()).isEqualTo(20);
         assertThat(answer.questionPassed()).isTrue();
         assertThat(answer.qrPassed()).isFalse();
         assertThat(answer.nextAction()).isEqualTo("SCAN_QR");
         assertThat(answer.settlement()).isNull();
 
         QrResultVO qr = gameRunService.submitQr(
-                player.getId(), run.runId(), 1, level.getQrAnswer());
+                player.getId(), run.runId(), 1, qrToken(level));
 
         assertThat(qr.correct()).isTrue();
         assertThat(qr.qrPassed()).isTrue();
         SettlementVO settlement = qr.settlement();
         assertThat(settlement).isNotNull();
-        assertThat(settlement.levelScore()).isEqualTo(80);
-        assertThat(settlement.totalScore()).isEqualTo(80);
+        assertThat(settlement.levelScore()).isEqualTo(20);
+        assertThat(settlement.totalScore()).isEqualTo(20);
         assertThat(settlement.nextLevelNo()).isEqualTo(2);
         assertThat(settlement.runCompleted()).isFalse();
         assertThat(settlement.durationSeconds()).isNull();
@@ -115,7 +120,7 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
         Level level = level(1);
 
         QrResultVO qr = gameRunService.submitQr(
-                player.getId(), run.runId(), 1, level.getQrAnswer());
+                player.getId(), run.runId(), 1, qrToken(level));
         assertThat(qr.correct()).isTrue();
         assertThat(qr.qrPassed()).isTrue();
         assertThat(qr.questionPassed()).isFalse();
@@ -124,10 +129,10 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
         AnswerResultVO answer = gameRunService.submitAnswer(
                 player.getId(), run.runId(), 1, level.getCorrectOptionKeys());
         assertThat(answer.correct()).isTrue();
-        assertThat(answer.score()).isEqualTo(100);
+        assertThat(answer.score()).isEqualTo(20);
         assertThat(answer.nextAction()).isEqualTo("NEXT");
         assertThat(answer.settlement()).isNotNull();
-        assertThat(answer.settlement().totalScore()).isEqualTo(100);
+        assertThat(answer.settlement().totalScore()).isEqualTo(20);
         assertThat(answer.settlement().nextLevelNo()).isEqualTo(2);
     }
 
@@ -139,10 +144,10 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
         Level level = level(1);
 
         gameRunService.submitAnswer(player.getId(), run.runId(), 1, level.getCorrectOptionKeys());
-        gameRunService.submitQr(player.getId(), run.runId(), 1, level.getQrAnswer());
+        gameRunService.submitQr(player.getId(), run.runId(), 1, qrToken(level));
 
         QrResultVO repeatQr = gameRunService.submitQr(
-                player.getId(), run.runId(), 1, level.getQrAnswer());
+                player.getId(), run.runId(), 1, qrToken(level));
         assertThat(repeatQr.correct()).isTrue();
         assertThat(repeatQr.settlement()).isNull();
 
@@ -150,10 +155,10 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
                 player.getId(), run.runId(), 1, level.getCorrectOptionKeys());
         assertThat(repeatAnswer.correct()).isTrue();
         assertThat(repeatAnswer.settlement()).isNull();
-        assertThat(repeatAnswer.score()).isEqualTo(100);
+        assertThat(repeatAnswer.score()).isEqualTo(20);
 
         RunStateVO current = gameRunService.current(player.getId());
-        assertThat(current.totalScore()).isEqualTo(100);
+        assertThat(current.totalScore()).isEqualTo(20);
         assertThat(current.lastLevelNo()).isEqualTo(2);
         assertThat(current.levels()).hasSize(1);
         assertThat(settledRowsOf(run.runId())).isEqualTo(1);
@@ -180,14 +185,14 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("二维码比对忽略空白与大小写，避免现场扫码因大小写失败")
+    @DisplayName("二维码比对忽略首尾空白与大小写，避免现场扫码因格式失败")
     void qrComparisonIsCaseAndSpaceInsensitive() {
         Player player = createPlayer("flow-qr-normalize");
         RunStateVO run = gameRunService.start(player.getId(), null);
         Level level = level(1);
 
-        // 在每个字符之间插入空白，仍应通过（normalizeQr 会去掉所有空白并转小写）
-        String messy = "  " + level.getQrAnswer().toUpperCase().replace("", " ") + "  ";
+        // 首尾空白 + 全大写仍应通过（校验前会 trim 并把十六进制签名转小写）
+        String messy = "  " + qrToken(level).toUpperCase() + "  ";
         QrResultVO qr = gameRunService.submitQr(player.getId(), run.runId(), 1, messy);
 
         assertThat(qr.correct()).isTrue();
@@ -261,7 +266,7 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
         RunStateVO run = gameRunService.start(player.getId(), null);
         Level level = level(1);
         gameRunService.submitAnswer(player.getId(), run.runId(), 1, level.getCorrectOptionKeys());
-        gameRunService.submitQr(player.getId(), run.runId(), 1, level.getQrAnswer());
+        gameRunService.submitQr(player.getId(), run.runId(), 1, qrToken(level));
 
         RunStateVO abandoned = gameRunService.abandon(player.getId(), run.runId());
         assertThat(abandoned.status()).isEqualTo("ABANDONED");
@@ -274,7 +279,7 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("12 关全通：状态 COMPLETED、总分 1200、用时由服务端计算，并写入排行榜")
+    @DisplayName("12 关全通：状态 COMPLETED、总分 240、用时由服务端计算，并写入排行榜")
     void completingAllLevelsMarksRunCompleted() {
         Player player = createPlayer("flow-complete");
         RunStateVO run = gameRunService.start(player.getId(), null);
@@ -290,7 +295,7 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
             assertThat(answer.correct()).as("第 %d 关答案", levelNo).isTrue();
 
             QrResultVO qr = gameRunService.submitQr(
-                    player.getId(), run.runId(), levelNo, level.getQrAnswer());
+                    player.getId(), run.runId(), levelNo, qrToken(level));
             last = qr.settlement();
             assertThat(last).as("第 %d 关结算", levelNo).isNotNull();
         }
@@ -298,17 +303,85 @@ class GameRunFlowIntegrationTest extends IntegrationTestBase {
         assertThat(last).isNotNull();
         assertThat(last.runCompleted()).isTrue();
         assertThat(last.nextLevelNo()).isNull();
-        assertThat(last.totalScore()).isEqualTo(total * 100);
+        assertThat(last.totalScore()).isEqualTo(total * 20);
         assertThat(last.durationSeconds()).isNotNull().isGreaterThanOrEqualTo(0);
 
         RunStateVO finished = gameRunService.current(player.getId());
         assertThat(finished.status()).isEqualTo("COMPLETED");
-        assertThat(finished.totalScore()).isEqualTo(1200);
+        assertThat(finished.totalScore()).isEqualTo(240);
         assertThat(finished.lastLevelNo()).isEqualTo(total);
 
         List<LeaderboardEntryVO> board = leaderboardService.top(10);
         assertThat(board).isNotEmpty();
         assertThat(board.get(0).nickname()).isEqualTo("测试-flow-complete");
-        assertThat(board.get(0).totalScore()).isEqualTo(1200);
+        assertThat(board.get(0).totalScore()).isEqualTo(240);
+    }
+
+    @Test
+    @DisplayName("多选少选得部分分：只选 1/2 得 10 分，通过后不会补成满分")
+    void partialSelectionAwardsPartialScore() {
+        Player player = createPlayer("flow-partial");
+        RunStateVO run = gameRunService.start(player.getId(), null);
+        Level level1 = level(1);
+        gameRunService.submitAnswer(player.getId(), run.runId(), 1, level1.getCorrectOptionKeys());
+        gameRunService.submitQr(player.getId(), run.runId(), 1, qrToken(level1));
+
+        Level level2 = level(2);
+        assertThat(level2.getCorrectOptionKeys()).hasSize(2);
+
+        AnswerResultVO partial = gameRunService.submitAnswer(
+                player.getId(), run.runId(), 2, List.of(level2.getCorrectOptionKeys().get(0)));
+
+        assertThat(partial.correct()).isTrue();
+        assertThat(partial.score()).isEqualTo(10);
+        assertThat(partial.questionPassed()).isTrue();
+        assertThat(partial.nextAction()).isEqualTo("SCAN_QR");
+
+        // 本题已通过，再提交全部正确答案也不会把 10 分补成 20：少选的分就是少拿了
+        AnswerResultVO retry = gameRunService.submitAnswer(
+                player.getId(), run.runId(), 2, level2.getCorrectOptionKeys());
+        assertThat(retry.score()).isEqualTo(10);
+        assertThat(attemptsOf(run.runId(), 2)).isEqualTo(1);
+
+        QrResultVO qr = gameRunService.submitQr(
+                player.getId(), run.runId(), 2, qrToken(level2));
+        assertThat(qr.settlement()).isNotNull();
+        assertThat(qr.settlement().levelScore()).isEqualTo(10);
+        assertThat(qr.settlement().totalScore()).isEqualTo(30);
+    }
+
+    @Test
+    @DisplayName("多选选到错误选项：本题 0 分且不通过，但不倒扣已得分数")
+    void wrongOptionGetsZeroWithoutDeduction() {
+        Player player = createPlayer("flow-wrong-option");
+        RunStateVO run = gameRunService.start(player.getId(), null);
+        Level level1 = level(1);
+        gameRunService.submitAnswer(player.getId(), run.runId(), 1, level1.getCorrectOptionKeys());
+        gameRunService.submitQr(player.getId(), run.runId(), 1, qrToken(level1));
+
+        Level level2 = level(2);
+        AnswerResultVO mixed = gameRunService.submitAnswer(
+                player.getId(), run.runId(), 2,
+                List.of(level2.getCorrectOptionKeys().get(0), "definitely-wrong"));
+
+        assertThat(mixed.correct()).isFalse();
+        assertThat(mixed.score()).isZero();
+        assertThat(mixed.questionPassed()).isFalse();
+        assertThat(mixed.nextAction()).isEqualTo("RETRY");
+
+        RunStateVO current = gameRunService.current(player.getId());
+        assertThat(current.totalScore()).isEqualTo(20);
+        assertThat(current.lastLevelNo()).isEqualTo(2);
+
+        // 错选不影响重试：本题重试时全部选对仍然拿 20
+        AnswerResultVO retry = gameRunService.submitAnswer(
+                player.getId(), run.runId(), 2, level2.getCorrectOptionKeys());
+        assertThat(retry.score()).isEqualTo(20);
+        assertThat(retry.questionPassed()).isTrue();
+    }
+
+    /** 按生产逻辑签发一枚有效期 1 天的关卡二维码。 */
+    private String qrToken(Level level) {
+        return qrTokenService.issue(level.getLevelNo(), level.getQrAnswer(), Duration.ofDays(1));
     }
 }

@@ -22,13 +22,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 最先执行：限流不需要知道「你是谁」
         registry.addInterceptor(loginRateLimitInterceptor)
                 .order(-1)
-                .addPathPatterns("/api/auth/login");
+                .addPathPatterns("/api/auth/login", "/api/auth/student-login");
 
         registry.addInterceptor(jwtInterceptor)
                 .order(0)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(
                         "/api/auth/login",
+                        "/api/auth/student-login",
                         "/api/health",
                         // 关卡内容是公开的（登录前也要展示），
                         // 但 DTO 已剔除 qrAnswer / correctOptionKeys，不会泄题。

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/components/auth-gate";
-import { CheckinCard } from "@/components/checkin-card";
 import { GameHeader } from "@/components/game-header";
 import { TOTAL_LEVELS } from "@/lib/constants";
 import { useGameStore } from "@/store/game-store";
@@ -60,8 +59,6 @@ export default function MapPage() {
               />
             </div>
           </div>
-
-          <CheckinCard labels={t.map.checkin} />
 
           {!runReady || loading ? (
             <p className="py-10 text-center text-sm text-[var(--ink-muted)]">{t.authGate.loading}</p>

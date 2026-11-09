@@ -37,9 +37,9 @@ class LeaderboardIntegrationTest extends IntegrationTestBase {
         Player alice = createPlayer("lb-alice");
         Player bob = createPlayer("lb-bob");
 
-        completedRun(alice.getId(), 1200, 12);
-        GameRun aliceFast = completedRun(alice.getId(), 1200, 2);
-        completedRun(bob.getId(), 1100, 1);
+        completedRun(alice.getId(), 240, 12);
+        GameRun aliceFast = completedRun(alice.getId(), 240, 2);
+        completedRun(bob.getId(), 220, 1);
 
         // Redis 是空的（@BeforeEach 清过），这一次走 MySQL 兜底并顺便预热
         List<LeaderboardEntryVO> board = leaderboardService.top(10);
@@ -53,14 +53,14 @@ class LeaderboardIntegrationTest extends IntegrationTestBase {
         // 预热确实写入了复合分数：总分 * 100000 + (100000 - 用时)
         Double score = redis.opsForZSet().score(LEADERBOARD_KEY, String.valueOf(aliceFast.getId()));
         assertThat(score).isEqualTo(
-                (double) 1200 * DURATION_SCALE + (DURATION_SCALE - 2));
+                (double) 240 * DURATION_SCALE + (DURATION_SCALE - 2));
     }
 
     @Test
     @DisplayName("Redis 命中时直接返回 ZSET 顺序")
     void readsFromRedisAfterPreheat() {
         Player alice = createPlayer("lb-cache");
-        GameRun best = completedRun(alice.getId(), 1000, 5);
+        GameRun best = completedRun(alice.getId(), 200, 5);
 
         leaderboardService.top(10); // 第一次：MySQL → 预热
         Long size = redis.opsForZSet().zCard(LEADERBOARD_KEY);
@@ -70,7 +70,7 @@ class LeaderboardIntegrationTest extends IntegrationTestBase {
 
         assertThat(second).hasSize(1);
         assertThat(second.get(0).nickname()).isEqualTo("测试-lb-cache");
-        assertThat(second.get(0).totalScore()).isEqualTo(1000);
+        assertThat(second.get(0).totalScore()).isEqualTo(200);
         assertThat(second.get(0).durationSeconds()).isEqualTo(5);
 
         Set<ZSetOperations.TypedTuple<String>> tuples =
@@ -84,8 +84,8 @@ class LeaderboardIntegrationTest extends IntegrationTestBase {
     void rebuildRebuildsZsetFromMysql() {
         Player alice = createPlayer("lb-rebuild");
         Player bob = createPlayer("lb-rebuild-2");
-        completedRun(alice.getId(), 1200, 3);
-        completedRun(bob.getId(), 900, 1);
+        completedRun(alice.getId(), 240, 3);
+        completedRun(bob.getId(), 180, 1);
 
         // 先写一条脏数据，验证 rebuild 会把它清掉
         redis.opsForZSet().add(LEADERBOARD_KEY, "999999", 1);
@@ -106,7 +106,7 @@ class LeaderboardIntegrationTest extends IntegrationTestBase {
     @DisplayName("limit 会被限制在 1..100，非法值不会抛异常")
     void limitIsCapped() {
         Player player = createPlayer("lb-limit");
-        completedRun(player.getId(), 500, 10);
+        completedRun(player.getId(), 100, 10);
 
         assertThat(leaderboardService.top(0)).hasSize(1);
         assertThat(leaderboardService.top(10_000)).hasSize(1);

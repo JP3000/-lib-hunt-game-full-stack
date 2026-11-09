@@ -7,6 +7,7 @@ type Translations = {
   login: {
     headline: string;
     description: string;
+    adminDescription: string;
     staffDescription: string;
     studentIdLabel: string;
     studentIdPlaceholder: string;
@@ -15,7 +16,8 @@ type Translations = {
     submit: string;
     loading: string;
     invalidStudentId: string;
-    fastPass: (id: string) => string;
+    passwordRequired: string;
+    adminRole: string;
     roleLabel: string;
     studentRole: string;
     staffRole: string;
@@ -52,14 +54,6 @@ type Translations = {
     locked: string;
     unlockHint: string;
     stamped: string;
-    checkin: {
-      title: string;
-      hint: string;
-      button: string;
-      checkedIn: string;
-      done: (data: { total: number; streak: number }) => string;
-      error: string;
-    };
   };
   level: {
     title: (level: number) => string;
@@ -67,8 +61,8 @@ type Translations = {
     questionHeading: string;
     multiSelectHint: string;
     submitAnswer: string;
-    answerCorrect: string;
-    answerWrong: string;
+    answerCorrect: (score: number) => string;
+    submitError: string;
     completedHint: string;
     settlementHeading: string;
     questionStatus: string;
@@ -147,7 +141,8 @@ const translations: Record<Locale, Translations> = {
     metaDescription: "一張泛黃字條，一首明代古詩，一段橫跨四百年的圖書館尋寶之旅。",
     login: {
       headline: "鄭芝龍的寶藏 II",
-      description: "使用學號與密碼登入後即可開始尋寶。\n示例: ab565666",
+      description: "輸入學號（2 個字母 + 6 個數字）即可開始尋寶。\n示例: ab565666",
+      adminDescription: "管理員請使用賬號與密碼登入。",
       staffDescription: "輸入職員用戶名即可開始尋寶。\n用戶名長度：5 至 15 個字符。",
       studentIdLabel: "帳號 / 學號",
       studentIdPlaceholder: "輸入學號",
@@ -155,8 +150,9 @@ const translations: Record<Locale, Translations> = {
       passwordPlaceholder: "輸入密碼",
       submit: "開始解碼",
       loading: "正在喚醒解碼系統...",
-      invalidStudentId: "請輸入正確學號格式：前兩位字母（大寫或小寫）+ 6 位數字，例如 ab565666 或 AB565666。",
-      fastPass: (id) => `演示快速通關學號: ${id}（可直接解鎖到第 12 關）`,
+      invalidStudentId: "學號格式：2 個字母 + 6 個數字（如 ab565666）。",
+      passwordRequired: "請輸入密碼。",
+      adminRole: "管理員",
       roleLabel: "登入身分",
       studentRole: "學生",
       staffRole: "職員",
@@ -194,14 +190,6 @@ const translations: Record<Locale, Translations> = {
       locked: "未解鎖",
       unlockHint: "先完成前置關卡",
       stamped: "已蓋章",
-      checkin: {
-        title: "今日到館",
-        hint: "每日打卡，記錄你的尋寶足跡",
-        button: "打卡",
-        checkedIn: "已打卡",
-        done: ({ total, streak }) => `今年到館 ${total} 天 · 連續 ${streak} 天`,
-        error: "打卡失敗，請稍後再試",
-      },
     },
     level: {
       title: (level) => `第 ${level} 關`,
@@ -209,8 +197,8 @@ const translations: Record<Locale, Translations> = {
       questionHeading: "問題挑戰",
       multiSelectHint: "本題可多選",
       submitAnswer: "提交答案",
-      answerCorrect: "提交成功",
-      answerWrong: "答案不正確，再想想線索。",
+      answerCorrect: (score) => `本題得 ${score} 分`,
+      submitError: "提交失敗，請稍後再試。",
       completedHint: "本關已完成，可繼續下一關或返回地圖。",
       settlementHeading: "本關結算",
       questionStatus: "答題狀態",
@@ -232,7 +220,7 @@ const translations: Record<Locale, Translations> = {
       scanArea: "掃碼區域",
       startScan: "開始掃碼",
       stopScan: "停止掃碼",
-      manualPlaceholder: "手動輸入密鑰",
+      manualPlaceholder: "手動輸入二維碼內容",
       manualVerify: "手動驗證",
 
       emptyValue: "請輸入二維碼內容後再驗證。",
@@ -287,7 +275,8 @@ const translations: Record<Locale, Translations> = {
     metaDescription: "一张泛黄字条，一首明代古诗，一段横跨四百年的图书馆寻宝之旅。",
     login: {
       headline: "郑芝龙的宝藏 II",
-      description: "使用学号与密码登录后即可开始寻宝。\n示例: ab565666",
+      description: "输入学号（2 个字母 + 6 个数字）即可开始寻宝。\n示例: ab565666",
+      adminDescription: "管理员请使用账号与密码登录。",
       staffDescription: "输入职员用户名即可开始寻宝。\n用户名长度：5 至 15 个字符。",
       studentIdLabel: "账号 / 学号",
       studentIdPlaceholder: "输入学号",
@@ -295,8 +284,9 @@ const translations: Record<Locale, Translations> = {
       passwordPlaceholder: "输入密码",
       submit: "开始解码",
       loading: "正在唤醒解码系统...",
-      invalidStudentId: "请输入正确学号格式：前两位字母（大写或小写）+ 6 位数字，例如 ab565666 或 AB565666。",
-      fastPass: (id) => `演示快速通关学号: ${id}（可直接解锁到第 12 关）`,
+      invalidStudentId: "学号格式：2 个字母 + 6 个数字（如 ab565666）。",
+      passwordRequired: "请输入密码。",
+      adminRole: "管理员",
       roleLabel: "登录身份",
       studentRole: "学生",
       staffRole: "职员",
@@ -334,14 +324,6 @@ const translations: Record<Locale, Translations> = {
       locked: "未解锁",
       unlockHint: "先完成前置关卡",
       stamped: "已盖章",
-      checkin: {
-        title: "今日到馆",
-        hint: "每日打卡，记录你的寻宝足迹",
-        button: "打卡",
-        checkedIn: "已打卡",
-        done: ({ total, streak }) => `今年到馆 ${total} 天 · 连续 ${streak} 天`,
-        error: "打卡失败，请稍后再试",
-      },
     },
     level: {
       title: (level) => `第 ${level} 关`,
@@ -349,8 +331,8 @@ const translations: Record<Locale, Translations> = {
       questionHeading: "问题挑战",
       multiSelectHint: "本题可多选",
       submitAnswer: "提交答案",
-      answerCorrect: "提交成功",
-      answerWrong: "答案不正确，再想想线索。",
+      answerCorrect: (score) => `本题得 ${score} 分`,
+      submitError: "提交失败，请稍后再试。",
       completedHint: "本关已完成，可继续下一关或返回地图。",
       settlementHeading: "本关结算",
       questionStatus: "答题状态",
@@ -372,7 +354,7 @@ const translations: Record<Locale, Translations> = {
       scanArea: "扫码区域",
       startScan: "开始扫码",
       stopScan: "停止扫码",
-      manualPlaceholder: "手动输入密钥",
+      manualPlaceholder: "手动输入二维码内容",
       manualVerify: "手动验证",
 
       emptyValue: "请输入二维码内容后再验证。",
@@ -427,7 +409,8 @@ const translations: Record<Locale, Translations> = {
     metaDescription: "A yellowed note, a Ming dynasty poem, and a 400-year treasure hunt across the library.",
     login: {
       headline: "Zheng Zhilong's Treasure II",
-      description: "Sign in with your student ID and password to start the hunt.\nExample: ab565666",
+      description: "Enter your student ID (2 letters + 6 digits) to start the hunt.\nExample: ab565666",
+      adminDescription: "Admins sign in with their account and password.",
       staffDescription: "Enter your staff username to start the hunt.\nUsername length: 5-15 characters.",
       studentIdLabel: "Account / Student ID",
       studentIdPlaceholder: "Enter student ID",
@@ -435,8 +418,9 @@ const translations: Record<Locale, Translations> = {
       passwordPlaceholder: "Enter password",
       submit: "Start Decoding",
       loading: "Waking the decoding system...",
-      invalidStudentId: "Use the correct format: two letters (upper or lower case) + 6 digits, e.g. ab565666 or AB565666.",
-      fastPass: (id) => `Demo fast-pass ID: ${id} (unlocks up to level 12)`,
+      invalidStudentId: "Student ID must be 2 letters followed by 6 digits (e.g., ab565666).",
+      passwordRequired: "Enter your password.",
+      adminRole: "Admin",
       roleLabel: "Login as",
       studentRole: "Student",
       staffRole: "Staff",
@@ -473,14 +457,6 @@ const translations: Record<Locale, Translations> = {
       locked: "Locked",
       unlockHint: "Finish the previous level first",
       stamped: "Stamped",
-      checkin: {
-        title: "Library Check-in",
-        hint: "Check in each day to record your hunt",
-        button: "Check in",
-        checkedIn: "Checked in",
-        done: ({ total, streak }) => `${total} days this year · ${streak}-day streak`,
-        error: "Check-in failed, please try again",
-      },
     },
     level: {
       title: (level) => `Level ${level}`,
@@ -488,8 +464,8 @@ const translations: Record<Locale, Translations> = {
       questionHeading: "Challenge Question",
       multiSelectHint: "Multiple answers allowed",
       submitAnswer: "Submit Answer",
-      answerCorrect: "Submitted successfully",
-      answerWrong: "That is not the answer. Re-read the clues.",
+      answerCorrect: (score) => `You earned ${score} points on this question.`,
+      submitError: "Submission failed. Please try again.",
       completedHint: "This level is complete. Continue or return to the map.",
       settlementHeading: "Level Summary",
       questionStatus: "Quiz Status",
@@ -511,7 +487,7 @@ const translations: Record<Locale, Translations> = {
       scanArea: "Scan area",
       startScan: "Start Scan",
       stopScan: "Stop Scan",
-      manualPlaceholder: "Enter pass code",
+      manualPlaceholder: "Enter QR content",
       manualVerify: "Verify",
 
       emptyValue: "Please enter the pass code before verifying.",

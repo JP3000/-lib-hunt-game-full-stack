@@ -11,7 +11,7 @@
 | 持久层 | MyBatis-Plus 3.5.7（mybatis-spring 覆盖为 3.0.4，兼容 Boot 3.5） |
 | 数据库 | MySQL 8.4 |
 | 迁移 | Flyway 11 |
-| 缓存 | Redis 7 |
+| Redis | 7（排行榜 ZSET、登录限流） |
 | 认证 | JWT (jjwt 0.12.6) + 拦截器 |
 | 接口文档 | springdoc-openapi 2.8.6 |
 
@@ -37,6 +37,8 @@ cd server
 | `http://localhost:8080/swagger-ui.html` | 接口文档 |
 | `http://localhost:8080/actuator/health` | Spring Boot 健康端点 |
 
+用 IntelliJ IDEA 开发时，见 [docs/IDEA.md](../docs/IDEA.md)；接口调试可直接打开 [http/api.http](http/api.http)（IDEA HTTP Client）。
+
 ## 测试
 
 ```bash
@@ -48,28 +50,26 @@ cd server
 | 测试类 | 覆盖内容 |
 | --- | --- |
 | `GameRulesTest` | 计分规则 |
-| `GameRunFlowIntegrationTest` | 开局 / 判题 / 扫码 / 结算 / 幂等 / 跳关 / 放弃 / 通关 |
+| `GameRunFlowIntegrationTest` | 开局 / 判题 / 部分分 / 错选不得分 / 扫码 / 结算 / 幂等 / 跳关 / 放弃 / 通关 |
 | `GameRunConcurrencyIntegrationTest` | 并发答题、并发结算、并发开局（验证行锁与唯一索引） |
 | `LeaderboardIntegrationTest` | Redis 排序、每人最好一局、预热与重建 |
 | `LeaderboardFallbackTest` | Redis 故障时回落 MySQL |
 | `ApiSecurityIntegrationTest` | 401 / 403、登录、禁用账号、答案不泄露 |
-| `LevelCacheIntegrationTest` | 关卡详情 / 列表缓存、空值标记、按语言分键 |
-| `LevelCacheFallbackTest` | Redis 故障时缓存降级回源 |
-| `LevelCacheDisabledTest` | 缓存开关关闭后只读 MySQL、不写 Redis |
+| `StudentLoginIntegrationTest` | 学号直登自动建号、复用已有账号、管理员/禁用账号拦截 |
+| `QrTokenServiceTest` | 二维码签名校验：有效 / 过期 / 关卡不符 / 篡改 / 密钥错误 / 大小写与空白 |
 | `LoginRateLimitIntegrationTest` | IP 限流 429、账号级限流 |
-| `CheckinIntegrationTest` | 打卡幂等、连续天数、BitMap 存储占用 |
 
-共 49 个用例。压测脚本与结果在仓库根目录的 [perf/](../perf/)。
+共 54 个用例。压测脚本与结果在仓库根目录的 [perf/](../perf/)。
 
 ## 端口说明
 
 | 服务 | 宿主机端口 | 说明 |
 | --- | --- | --- |
-| MySQL | **3307** | 宿主机 3306 被其他 MySQL 占用，改用 3307 |
-| Redis | **6380** | 避开本机已有的 6379 |
+| MySQL | **3306**（默认）/ 3307（`docker` profile） | 默认连本机；Docker 中间件映射到 3307 |
+| Redis | **6379**（默认）/ 6380（`docker` profile） | 默认连本机；Docker 中间件映射到 6380 |
 | 后端 | 8080 | |
 
-如需改端口，同步修改 `docker-compose.yml` 与 `src/main/resources/application.yml`。
+用 Docker 中间件时加 `SPRING_PROFILES_ACTIVE=docker`，端口差异集中在 `application-docker.yml`。
 
 ## 配置
 
@@ -77,7 +77,7 @@ cd server
 | --- | --- | --- |
 | `JWT_SECRET` | 环境变量（默认值仅本地开发） | 至少 32 字节，生产必须覆盖 |
 | `ADMIN_STUDENT_NO` / `ADMIN_INITIAL_PASSWORD` | 环境变量 | 首次启动创建的管理员账号，默认 `admin / Admin@123456` |
-| `SPRING_DATASOURCE_*` / `SPRING_DATA_REDIS_*` | 环境变量 | Spring Boot 标准覆盖方式，默认指向本地 docker-compose |
+| `SPRING_DATASOURCE_*` / `SPRING_DATA_REDIS_*` | 环境变量 | Spring Boot 标准覆盖方式；默认本机 3306/6379，`docker` profile 用 3307/6380 |
 | `libhunt.jwt.expire-hours` | application.yml | Token 有效期，默认 12 小时 |
 
 ## 目录结构

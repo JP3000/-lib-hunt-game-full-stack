@@ -15,7 +15,7 @@ import java.util.Map;
  * 关卡主数据。
  * <p>
  * {@code title / story / question} 等是 JSON 列，值为 {@code {"zh-Hant": "...", ...}}。
- * 注意：{@code qrAnswer} 与 {@code correctOptionKeys} 是答案，
+ * 注意：{@code qrAnswer} 是二维码签名密钥，{@code correctOptionKeys} 是答案，
  * <b>任何对外 DTO 都不得包含它们</b>。
  */
 @Data

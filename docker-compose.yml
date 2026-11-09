@@ -2,8 +2,8 @@
 #
 # 注意：
 #   - Redis 映射到宿主机 6380，避免与本机已有的 6379 冲突。
-#     如果你本机没有跑 Redis，也可以把 "6380:6379" 改成 "6379:6379"，
-#     并同步修改 server/src/main/resources/application.yml 中的 spring.data.redis.port。
+#   - 后端默认连本机 3306/6379；用这套 Docker 中间件时，启动后端要加
+#     SPRING_PROFILES_ACTIVE=docker（对应 application-docker.yml 的 3307/6380）。
 #   - 这里的账号密码仅用于本地开发，生产环境请通过环境变量注入。
 
 services:
@@ -11,7 +11,7 @@ services:
     image: mysql:8.4
     container_name: libhunt-mysql
     ports:
-      # 宿主机 3306 被其他进程占用，改用 3307；application.yml 中同步配置
+      # 宿主机 3306 被其他进程占用，改用 3307；后端用 docker profile 连接
       - "3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: root

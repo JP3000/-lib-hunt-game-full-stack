@@ -6,8 +6,8 @@ spring:
     name: lib-hunt-server
 
   datasource:
-    # docker-compose 中 MySQL 映射到 3307（宿主机 3306 被占用）
-    url: "jdbc:mysql://localhost:3307/libhunt?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    # 默认连本机 MySQL；用 docker compose 时激活 docker profile（见 application-docker.yml）
+    url: "jdbc:mysql://localhost:3306/libhunt?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -19,8 +19,7 @@ spring:
   data:
     redis:
       host: localhost
-      # docker-compose 中 Redis 映射到 6380，避免与宿主机已有的 6379 冲突
-      port: 6380
+      port: 6379
       database: 0
       timeout: 3s
 
@@ -40,9 +39,9 @@ mybatis-plus:
       id-type: auto
 
 libhunt:
-  cache:
-    # 关卡内容缓存总开关。关闭后每次读都回源 MySQL，用于排查内容不一致或做压测基线
-    enabled: ${LIBHUNT_CACHE_ENABLED:true}
+  qr:
+    # 现场二维码 HMAC 密钥；生产环境必须通过 LIBHUNT_QR_SECRET 覆盖
+    secret: ${LIBHUNT_QR_SECRET:dev-only-qr-secret-change-me}
   jwt:
     # 生产环境必须通过环境变量 JWT_SECRET 覆盖，且长度 >= 32 字节
     secret: ${JWT_SECRET:dev-only-change-me-please-32-bytes-minimum}

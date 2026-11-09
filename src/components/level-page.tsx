@@ -142,18 +142,19 @@ export function LevelPage({ levelNumber }: LevelPageProps) {
       );
 
       setAttempts(result.attempts);
-      if (result.correct) {
+      if (result.questionPassed) {
         setQuestionPassedLocal(true);
-        setAnswerMessage(t.level.answerCorrect);
+        setAnswerMessage(t.level.answerCorrect(result.score));
         setActiveTab("story");
         if (result.settlement) {
           applySettlement(levelNumber, result.settlement);
         }
       } else {
-        setAnswerMessage(t.level.answerWrong);
+        // 答错不提示，直接让玩家再试；错选不倒扣分数
+        setAnswerMessage("");
       }
     } catch (err) {
-      setAnswerMessage(err instanceof Error ? err.message : t.level.answerWrong);
+      setAnswerMessage(err instanceof Error ? err.message : t.level.submitError);
     } finally {
       setSubmitting(false);
     }
@@ -365,6 +366,10 @@ export function LevelPage({ levelNumber }: LevelPageProps) {
               </div>
             ))}
           </div>
+
+          {shownMessage ? (
+            <p className="text-sm text-amber-100">{shownMessage}</p>
+          ) : null}
 
           {questionPassed && level.completionStory ? (
             <button

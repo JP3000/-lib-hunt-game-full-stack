@@ -55,3 +55,11 @@ server/*.log
 /perf/results/
 /perf/report/
 /perf/jmeter.log
+
+# Java / Maven 构建产物
+server/target/
+*.class
+
+# IDEA 本地配置
+.idea/
+*.iml

@@ -81,7 +81,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
-        <!-- 分布式锁：缓存击穿时只放一个请求回源；登录接口限流 -->
+        <!-- Redisson：登录接口的分布式令牌桶限流（缓存已移除，不再用于缓存击穿保护） -->
         <dependency>
             <groupId>org.redisson</groupId>
             <artifactId>redisson</artifactId>

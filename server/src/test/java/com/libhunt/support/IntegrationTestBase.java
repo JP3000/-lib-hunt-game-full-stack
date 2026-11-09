@@ -105,7 +105,7 @@ public abstract class IntegrationTestBase {
         jdbc.update("DELETE FROM level_attempt");
         jdbc.update("DELETE FROM game_run");
         jdbc.update("DELETE FROM player WHERE role <> 'ADMIN'");
-        // 排行榜、缓存、限流、打卡都是跨用例共享的状态，统一清空再做隔离
+        // 排行榜、限流都是跨用例共享的状态，统一清空再做隔离
         Set<String> redisKeys = redis.keys("libhunt:*");
         if (redisKeys != null && !redisKeys.isEmpty()) {
             redis.delete(redisKeys);
